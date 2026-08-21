@@ -38,10 +38,12 @@ const DECISIONS_RE = /^##\s+decisions\s*$/i
 function parsePlan(text) {
   const nodes = [] // ordered
   const decisions = []
+  let title = ''
   let curPhase = null
   let inDecisions = false
   for (const raw of text.split('\n')) {
     const line = raw.trimEnd()
+    if (!title && /^#\s+/.test(line)) { title = line.replace(/^#\s+/, ''); continue }
     if (DECISIONS_RE.test(line)) { inDecisions = true; curPhase = null; continue }
     let m
     if ((m = line.match(PHASE_RE))) {
@@ -69,7 +71,7 @@ function parsePlan(text) {
     if (kids.some(k => k.status === 'active')) p.status = 'active'
     else if (kids.length && kids.every(k => k.status === 'done')) p.status = 'done'
   }
-  return { nodes, decisions }
+  return { nodes, decisions, title }
 }
 
 // ---------- baseline / drift ----------
@@ -120,7 +122,9 @@ let planText = safeRead(planPath)
 let parsed = parsePlan(planText)
 let baseline = loadBaseline(parsed)
 let activity = null // { file, at } — most recent non-plan repo write
+let recentActivity = [] // last N writes, newest first — feeds the live-view drill-down
 let planMtime = statMtime(planPath)
+const driftSeen = new Map() // drift key -> first-seen ts, so the feed can say "N min ago"
 const clients = new Set()
 
 function safeRead(p) { try { return fs.readFileSync(p, 'utf8') } catch { return '' } }
@@ -128,11 +132,20 @@ function statMtime(p) { try { return fs.statSync(p).mtimeMs } catch { return nul
 
 function model() {
   const { diffs, removed, newDecisions } = computeDrift(parsed, baseline)
+  const keys = new Set([
+    ...Object.keys(diffs),
+    ...removed.map(r => 'rm:' + r.id),
+    ...newDecisions.map(d => 'dec:' + d),
+  ])
+  for (const k of keys) if (!driftSeen.has(k)) driftSeen.set(k, Date.now())
+  for (const k of [...driftSeen.keys()]) if (!keys.has(k)) driftSeen.delete(k)
+  const driftAt = driftSeen.size ? Math.max(...driftSeen.values()) : null
   const plan = parsed.nodes.map(n => ({ ...n, diff: diffs[n.id] || null }))
   return {
-    session, plan, removed, newDecisions,
+    session, plan, removed, newDecisions, driftAt,
+    planTitle: parsed.title,
     hasPlan: planText.length > 0,
-    activity, planMtime,
+    activity, recentActivity, planMtime,
     now: Date.now(),
   }
 }
@@ -164,6 +177,9 @@ try {
     }
     // plain repo churn → liveness signal
     activity = { file: f, at: Date.now() }
+    if (!recentActivity.length || recentActivity[0].file !== f) recentActivity.unshift(activity)
+    else recentActivity[0] = activity
+    recentActivity = recentActivity.slice(0, 12)
     throttleBroadcast()
   })
 } catch (e) {

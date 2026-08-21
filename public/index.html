@@ -5,215 +5,348 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agenttrail</title>
 <link id="fav" rel="icon" href="">
-
 <style>
   :root {
-    --bg: #0f1115; --panel: #14171d; --text: #d7dae0; --dim: #6b7280;
-    --teal: #2dd4bf; --amber: #fbbf24; --red: #f87171; --green: #4ade80;
-    --line: #1f242c;
+    --bg: #0c0c0e; --card: #17171a; --panel: #1d1d21; --line: #2a2a30;
+    --text: #e8e8ea; --dim: #8b8b93; --faint: #55555c;
+    --teal: #2dd4bf; --blue: #60a5fa; --amber: #f5a623; --red: #f87171; --green: #4ade80;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   * { box-sizing: border-box; margin: 0; }
   body {
     background: var(--bg); color: var(--text);
-    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-    max-width: 720px; margin: 0 auto; padding: 32px 20px 80px;
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex; justify-content: center; padding: 40px 16px 80px;
   }
-  header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 24px; }
-  header h1 { font-size: 15px; font-weight: 600; }
-  header .proj { color: var(--dim); }
-  header .safe { margin-left: auto; font-size: 12px; color: var(--dim); }
-  header .safe.amberish { color: var(--amber); }
+  .card {
+    width: 100%; max-width: 760px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 16px; padding: 28px 32px;
+  }
+  header { display: flex; align-items: flex-start; margin-bottom: 22px; }
+  header .l h1 { font-size: 19px; font-weight: 650; }
+  header .l h1 .fn { color: var(--dim); font-weight: 500; }
+  header .l .sub { color: var(--dim); font-size: 14px; margin-top: 2px; }
+  header .r { margin-left: auto; text-align: right; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+  .pill-changed {
+    background: #3a2a08; color: var(--amber); font-size: 13px;
+    padding: 3px 12px; border-radius: 999px; white-space: nowrap;
+  }
+  .pill-safe { color: var(--faint); font-size: 13px; }
+  .toggle { font-size: 12px; color: var(--faint); user-select: none; }
+  .toggle span { cursor: pointer; padding: 2px 6px; border-radius: 5px; }
+  .toggle span.on { color: var(--text); background: var(--panel); }
 
-  .phase { margin-bottom: 6px; }
-  .row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px; }
-  .row .icon { width: 16px; text-align: center; flex: none; }
-  .row .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row .meta { margin-left: auto; color: var(--dim); font-size: 12px; flex: none; }
-  .phase > .row { font-weight: 600; }
-  .phase .needs { color: var(--dim); font-size: 11px; font-weight: 400; }
-  .tasks { margin-left: 24px; }
+  .sq {
+    width: 13px; height: 13px; border: 1.6px solid var(--faint); border-radius: 3px;
+    flex: none; display: inline-block;
+  }
+  .sq.done { border-color: var(--teal); }
+  .sq.active { border-color: var(--blue); }
+  .sq.revised { border-color: var(--amber); border-style: dashed; }
 
-  .done .icon { color: var(--teal); }
-  .done .title { color: var(--dim); }
-  .pending .icon, .pending .title { color: var(--dim); }
-  .active { background: var(--panel); }
-  .active .icon { color: var(--teal); }
-  .revised .title { color: var(--amber); }
+  .phase-row {
+    display: flex; align-items: center; gap: 14px; padding: 12px 14px;
+    background: var(--panel); border-radius: 10px; margin-bottom: 10px; cursor: pointer;
+  }
+  .phase-row .title { font-weight: 550; }
+  .phase-row.dim .title { color: var(--dim); font-weight: 500; }
+  .phase-row .meta { margin-left: auto; color: var(--dim); font-size: 14px; display: flex; gap: 10px; align-items: center; }
+  .phase-card {
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 8px;
+    margin-bottom: 10px;
+  }
+  .phase-card > .head { display: flex; align-items: center; gap: 14px; padding: 2px 0 10px; cursor: pointer; }
+  .phase-card > .head .title { font-weight: 600; }
+  .phase-card > .head .meta { margin-left: auto; color: var(--dim); font-size: 14px; display: flex; gap: 10px; align-items: center; }
   .pill {
-    font-size: 10px; padding: 1px 7px; border-radius: 999px; flex: none;
-    border: 1px dashed var(--amber); color: var(--amber); cursor: pointer;
+    background: #3a2a08; color: var(--amber); font-size: 12px;
+    padding: 2px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap;
   }
-  .live { color: var(--dim); font-size: 12px; margin-left: 24px; padding: 2px 8px 6px; }
-  .live .dot { color: var(--teal); }
-
-  .spin { display: inline-block; animation: spin 1.2s steps(8) infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  .diffbox { margin: 4px 0 10px 32px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; font-size: 12px; }
-  .diffbox .rm { color: var(--red); }
-  .diffbox .ad { color: var(--green); }
+  .task { display: flex; align-items: center; gap: 10px; padding: 5px 4px 5px 24px; font-size: 14.5px; }
+  .task .sq { width: 11px; height: 11px; }
+  .task .t { color: var(--dim); }
+  .task.done .t { color: var(--dim); }
+  .task.active .t { color: var(--text); font-weight: 600; }
+  .task.revised .t { color: var(--amber); }
+  .lv { color: var(--dim); font-weight: 400; cursor: pointer; font-size: 13.5px; }
+  .lv:hover { color: var(--text); }
+  .livebox {
+    margin: 4px 0 8px 46px; padding: 8px 12px; background: var(--panel);
+    border-radius: 8px; font: 12.5px var(--mono); color: var(--dim);
+  }
+  .livebox .f { display: flex; gap: 10px; padding: 1px 0; }
+  .livebox .f .dot { color: var(--teal); }
+  .livebox .f .ago { margin-left: auto; color: var(--faint); }
+  .diffbox {
+    margin: 4px 0 8px 46px; padding: 10px 12px; background: var(--panel);
+    border-radius: 8px; font: 13px var(--mono);
+  }
+  .rm { color: var(--red); } .ad { color: var(--green); }
   .diffbox .actions { margin-top: 8px; display: flex; gap: 8px; }
+
+  footer { margin-top: 22px; border-top: 1px solid var(--line); padding-top: 16px; }
+  footer .fh { color: var(--text); font-weight: 550; font-size: 14.5px; margin-bottom: 8px; }
+  footer .fh .when { color: var(--dim); font-weight: 400; }
+  .feed { font: 13.5px var(--mono); margin-bottom: 14px; }
+  .feed div { padding: 1.5px 0; }
+  .btns { display: flex; gap: 10px; }
   button {
-    font: 11px ui-monospace, monospace; background: none; border: 1px solid var(--line);
-    color: var(--text); border-radius: 5px; padding: 3px 10px; cursor: pointer;
+    font: 14px -apple-system, BlinkMacSystemFont, sans-serif; background: none;
+    border: 1px solid var(--line); color: var(--text); border-radius: 9px;
+    padding: 8px 20px; cursor: pointer;
   }
   button:hover { border-color: var(--dim); }
+  button.small { font-size: 12px; padding: 3px 12px; border-radius: 6px; }
   button.primary { border-color: var(--teal); color: var(--teal); }
+  .legend { color: var(--faint); font-size: 12.5px; }
+  .empty { color: var(--dim); padding: 30px 0; text-align: center; }
 
-  footer { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 14px; font-size: 12px; color: var(--dim); }
-  footer .entry { padding: 3px 0; display: flex; gap: 8px; align-items: baseline; }
-  footer .entry .amber { color: var(--amber); }
-  .legend { margin-top: 20px; font-size: 11px; color: var(--dim); }
-  .legend .t { color: var(--teal); } .legend .a { color: var(--amber); }
-  .empty { color: var(--dim); padding: 40px 0; text-align: center; }
+  #graph { overflow-x: auto; }
+  #graph svg { display: block; }
+  .gnode { cursor: pointer; }
+  .gnode rect.box { fill: var(--panel); stroke: var(--faint); stroke-width: 1.4; rx: 10; transition: all .3s; }
+  .gnode.done rect.box { stroke: var(--teal); }
+  .gnode.active rect.box { stroke: var(--blue); stroke-width: 2; }
+  .gnode.revised rect.box { stroke: var(--amber); stroke-dasharray: 5 4; }
+  .gnode text { fill: var(--text); font: 600 13px -apple-system, sans-serif; }
+  .gnode text.m { fill: var(--dim); font-weight: 400; font-size: 12px; }
+  .gedge { stroke: var(--faint); stroke-width: 1.4; fill: none; }
+  .gsq { rx: 1.5; fill: none; stroke-width: 1.6; }
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-    padding: 8px 16px; font-size: 12px; opacity: 0; transition: opacity .2s; }
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 16px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
   .toast.show { opacity: 1; }
 </style>
 </head>
 <body>
-<header>
-  <h1>agenttrail</h1>
-  <span class="proj" id="proj"></span>
-  <span class="safe" id="safe"></span>
-</header>
-<main id="plan"></main>
-<footer>
-  <div id="feed"></div>
-  <div class="legend"><span class="t">●</span> done / active &nbsp; <span style="color:var(--dim)">○</span> pending &nbsp; <span class="a">◌</span> revised — click the pill</div>
-</footer>
+<div class="card">
+  <header>
+    <div class="l">
+      <h1><span id="proj"></span> <span class="fn">· PLAN.md</span></h1>
+      <div class="sub" id="sub"></div>
+    </div>
+    <div class="r">
+      <span id="state"></span>
+      <div class="toggle"><span id="tg-plan" class="on" onclick="setView('plan')">plan</span> <span id="tg-graph" onclick="setView('graph')">graph</span></div>
+    </div>
+  </header>
+  <main id="plan"></main>
+  <div id="graph" style="display:none"></div>
+  <footer id="foot"></footer>
+</div>
 <div class="toast" id="toast"></div>
 <script>
 let M = null
-const open = new Set() // node ids with expanded diffbox
+let view = 'plan'
+const openDiff = new Set()
+const userOpen = new Set(), userClosed = new Set()
+let liveOpen = true
 const $ = id => document.getElementById(id)
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+const ago = ms => { const s = Math.max(0, Math.round((Date.now() - ms) / 1000)); return s < 60 ? s + 's' : s < 3600 ? Math.round(s / 60) + ' min' : Math.round(s / 3600) + ' h' }
 
 const es = new EventSource('/events')
 es.onmessage = e => { M = JSON.parse(e.data); render() }
 setInterval(() => { if (M) renderTimes() }, 1000)
 
-function ago(ms) {
-  const s = Math.max(0, Math.round((Date.now() - ms) / 1000))
-  return s < 60 ? s + 's' : Math.round(s / 60) + 'm'
-}
+function setView(v) { view = v; render() }
 
-function icon(n) {
-  if (n.diff) return '◌'
-  if (n.status === 'done') return '✓'
-  if (n.status === 'active') return '<span class="spin">◠</span>'
-  return '○'
+function driftCount() {
+  return M.plan.filter(n => n.diff).length + M.removed.length + M.newDecisions.length
 }
-
-function esc(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
-
-function diffbox(n) {
-  if (!open.has(n.id) || !n.diff) return ''
-  const rm = n.diff.removed.map(l => `<div class="rm">- ${esc(l)}</div>`).join('')
-  const ad = n.diff.added.map(l => `<div class="ad">+ ${esc(l)}</div>`).join('')
-  return `<div class="diffbox">${rm}${ad}
-    <div class="actions">
-      <button onclick="askWhy('${n.id}')">ask why</button>
-      <button class="primary" onclick="acceptNode('${n.id}')">accept</button>
-    </div></div>`
+function phaseHasDrift(p) {
+  return !!p.diff || M.plan.some(n => n.parent === p.id && n.diff) || M.removed.some(r => r.parent === p.id || r.id === p.id)
 }
-
-function row(n, extraMeta, suffix) {
-  const cls = [n.level, n.status, n.diff ? 'revised' : ''].join(' ')
-  const pill = n.diff ? `<span class="pill" onclick="toggle('${n.id}')">${n.diff.kind}</span>` : ''
-  return `<div class="row ${cls}"><span class="icon">${icon(n)}</span>
-    <span class="title">${esc(n.title)}${suffix || ''}</span>${pill}
-    <span class="meta">${extraMeta || ''}</span></div>${diffbox(n)}`
-}
+function sq(status, revised) { return `<span class="sq ${revised ? 'revised' : status}"></span>` }
 
 function render() {
   $('proj').textContent = M.session.project
-  const plan = $('plan')
-  if (!M.hasPlan) {
-    plan.innerHTML = `<div class="empty">no PLAN.md — run <b>agenttrail init</b> in the repo</div>` + workingRow()
-    renderSafe(); renderFeed(); return
-  }
+  $('sub').textContent = M.planTitle || ''
+  const drift = driftCount()
+  $('state').innerHTML = drift ? `<span class="pill-changed">plan changed</span>` : `<span class="pill-safe">coffee is safe</span>`
+  favicon(drift ? '#f5a623' : '#2dd4bf')
+  document.title = drift ? `(${drift}) agenttrail · ${M.session.project}` : `agenttrail · ${M.session.project}`
+  $('tg-plan').className = view === 'plan' ? 'on' : ''
+  $('tg-graph').className = view === 'graph' ? 'on' : ''
+  $('plan').style.display = view === 'plan' ? '' : 'none'
+  $('graph').style.display = view === 'graph' ? '' : 'none'
+  if (view === 'plan') renderPlan(); else renderGraph()
+  renderFoot()
+  renderTimes()
+}
+
+function isOpen(p) {
+  if (userClosed.has(p.id)) return false
+  if (userOpen.has(p.id)) return true
+  return p.status === 'active' || phaseHasDrift(p)
+}
+
+function renderPlan() {
+  if (!M.hasPlan) { $('plan').innerHTML = `<div class="empty">no PLAN.md — run <b>agenttrail init</b> in the repo</div>`; return }
   const phases = M.plan.filter(n => n.level === 'phase')
   let html = ''
   for (const p of phases) {
     const kids = M.plan.filter(n => n.parent === p.id)
     const done = kids.filter(k => k.status === 'done').length
-    const needs = p.needs.length ? ` <span class="needs">needs: ${esc(p.needs.join(', '))}</span>` : ''
-    html += `<div class="phase">` + row(p, `${done}/${kids.length}`, needs)
-    html += `<div class="tasks">`
-    for (const k of kids) {
-      html += row(k)
-      if (k.status === 'active' && M.activity) html += liveLine()
+    const pill = phaseHasDrift(p) ? `<span class="pill" onclick="event.stopPropagation();toggleDiff('${p.id}')">revised</span>` : ''
+    const meta = `${pill}<span>${done}/${kids.length}</span>`
+    if (!isOpen(p)) {
+      html += `<div class="phase-row ${p.status === 'done' ? 'dim' : 'dim'}" onclick="togglePhase('${p.id}')">
+        ${sq(p.status, !!p.diff)}<span class="title">${esc(p.title)}</span><span class="meta">${meta}</span></div>`
+      html += nodeDiffbox(p)
+      continue
     }
-    html += `</div></div>`
+    html += `<div class="phase-card"><div class="head" onclick="togglePhase('${p.id}')">
+      ${sq(p.status, !!p.diff)}<span class="title">${esc(p.title)}</span><span class="meta">${meta}</span></div>`
+    html += nodeDiffbox(p)
+    for (const k of kids) {
+      const revised = !!k.diff
+      const live = k.status === 'active' ? ` <span class="lv" onclick="event.stopPropagation();liveOpen=!liveOpen;render()">— live view ▸</span>` : ''
+      const pillK = revised ? ` <span class="pill" onclick="toggleDiff('${k.id}')">${k.diff.kind}</span>` : ''
+      html += `<div class="task ${k.status}${revised ? ' revised' : ''}">${sq(k.status, revised)}<span class="t">${esc(k.title)}</span>${pillK}${live}</div>`
+      if (k.status === 'active' && liveOpen && M.recentActivity.length) {
+        html += `<div class="livebox">` + M.recentActivity.slice(0, 5).map(a =>
+          `<div class="f"><span class="dot">●</span><span>${esc(a.file)}</span><span class="ago t-ago" data-at="${a.at}"></span></div>`).join('') + `</div>`
+      }
+      html += nodeDiffbox(k)
+    }
+    html += `</div>`
   }
-  // orphan tasks (no phase)
-  for (const k of M.plan.filter(n => n.level === 'task' && !n.parent)) html += row(k)
-  if (!M.plan.some(n => n.status === 'active') && M.activity) html += workingRow()
-  plan.innerHTML = html
-  renderSafe(); renderFeed(); renderTimes()
+  if (!M.plan.some(n => n.status === 'active') && M.activity) {
+    html += `<div class="phase-row"><span class="sq active"></span><span class="title">working</span>
+      <span class="meta">${esc(M.activity.file)} · <span class="t-ago" data-at="${M.activity.at}"></span></span></div>`
+  }
+  $('plan').innerHTML = html
 }
 
-function liveLine() {
-  return `<div class="live"><span class="dot">●</span> editing ${esc(M.activity.file)} · <span class="t-ago" data-at="${M.activity.at}"></span> ago</div>`
+function nodeDiffbox(n) {
+  if (!n.diff || !openDiff.has(n.id)) return ''
+  const rm = n.diff.removed.map(l => `<div class="rm">- ${esc(l)}</div>`).join('')
+  const ad = n.diff.added.map(l => `<div class="ad">+ ${esc(l)}</div>`).join('')
+  return `<div class="diffbox">${rm}${ad}<div class="actions">
+    <button class="small" onclick="askWhyNode('${n.id}')">ask why ↗</button>
+    <button class="small primary" onclick="acceptNode('${n.id}')">accept</button></div></div>`
 }
-function workingRow() {
-  if (!M.activity) return ''
-  return `<div class="row active"><span class="icon"><span class="spin">◠</span></span>
-    <span class="title">working</span><span class="meta">${esc(M.activity.file)} · <span class="t-ago" data-at="${M.activity.at}"></span> ago</span></div>`
+
+// ---- flow graph: layered by needs edges, zero-dep svg ----
+function renderGraph() {
+  const phases = M.plan.filter(n => n.level === 'phase')
+  if (!phases.length) { $('graph').innerHTML = `<div class="empty">no phases to graph</div>`; return }
+  const byId = Object.fromEntries(phases.map(p => [p.id, p]))
+  const depth = {}
+  const d = p => {
+    if (depth[p.id] != null) return depth[p.id]
+    depth[p.id] = 0 // cycle guard
+    const preds = p.needs.filter(id => byId[id])
+    depth[p.id] = preds.length ? 1 + Math.max(...preds.map(id => d(byId[id]))) : 0
+    return depth[p.id]
+  }
+  phases.forEach(d)
+  const cols = {}
+  phases.forEach(p => { (cols[depth[p.id]] = cols[depth[p.id]] || []).push(p) })
+  const W = 200, GX = 90, GY = 26, PAD = 20
+  const pos = {}
+  let maxY = 0
+  for (const [c, list] of Object.entries(cols)) {
+    let y = PAD
+    for (const p of list) {
+      const kids = M.plan.filter(n => n.parent === p.id)
+      const h = 52 + (kids.length ? 16 : 0)
+      pos[p.id] = { x: PAD + c * (W + GX), y, h, kids }
+      y += h + GY
+      maxY = Math.max(maxY, y)
+    }
+  }
+  const width = PAD * 2 + (Object.keys(cols).length) * (W + GX) - GX
+  let edges = '', nodes = ''
+  for (const p of phases) {
+    const t = pos[p.id]
+    for (const nid of p.needs) {
+      const s = pos[nid]; if (!s) continue
+      const x1 = s.x + W, y1 = s.y + s.h / 2, x2 = t.x, y2 = t.y + t.h / 2
+      edges += `<path class="gedge" d="M${x1},${y1} C${x1 + GX / 2},${y1} ${x2 - GX / 2},${y2} ${x2},${y2}" marker-end="url(#arr)"/>`
+    }
+  }
+  const sqColor = s => s === 'done' ? 'var(--teal)' : s === 'active' ? 'var(--blue)' : 'var(--faint)'
+  for (const p of phases) {
+    const { x, y, h, kids } = pos[p.id]
+    const done = kids.filter(k => k.status === 'done').length
+    const cls = ['gnode', p.status, phaseHasDrift(p) ? 'revised' : ''].join(' ')
+    let minis = ''
+    kids.slice(0, 14).forEach((k, i) => {
+      minis += `<rect class="gsq" x="${14 + i * 13}" y="${h - 20}" width="9" height="9" style="stroke:${k.diff ? 'var(--amber)' : sqColor(k.status)};${k.diff ? 'stroke-dasharray:2 2;' : ''}"/>`
+    })
+    nodes += `<g class="${cls}" transform="translate(${x},${y})" onclick="openPhase('${p.id}')">
+      <rect class="box" width="${W}" height="${h}" rx="10"/>
+      <text x="14" y="24">${esc(p.title.length > 22 ? p.title.slice(0, 21) + '…' : p.title)}</text>
+      <text class="m" x="${W - 14}" y="24" text-anchor="end">${kids.length ? done + '/' + kids.length : ''}</text>
+      ${minis}</g>`
+  }
+  $('graph').innerHTML = `<svg style="width:100%;height:auto" viewBox="0 0 ${Math.max(width, 400)} ${maxY + PAD}" preserveAspectRatio="xMinYMin meet">
+    <defs><marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L8,4 L0,8" fill="none" stroke="var(--faint)" stroke-width="1.4"/></marker></defs>
+    ${edges}${nodes}</svg>`
 }
+function openPhase(id) { userClosed.delete(id); userOpen.add(id); setView('plan') }
+
+function renderFoot() {
+  const lines = []
+  for (const n of M.plan.filter(n => n.diff)) {
+    for (const l of n.diff.removed) lines.push(`<div class="rm">- ${esc(ctx(n))}: ${esc(l)}</div>`)
+    for (const l of n.diff.added) lines.push(`<div class="ad">+ ${esc(ctx(n))}: ${esc(l)}</div>`)
+  }
+  for (const r of M.removed) lines.push(`<div class="rm">- removed: ${esc(r.title)}</div>`)
+  for (const dline of M.newDecisions) lines.push(`<div class="ad">+ decision: ${esc(dline)}</div>`)
+  if (!lines.length) {
+    $('foot').innerHTML = `<div class="legend"><span style="color:var(--teal)">▣</span> done &nbsp; <span style="color:var(--blue)">▣</span> active &nbsp; ▢ pending &nbsp; <span style="color:var(--amber)">▨</span> revised</div>`
+    return
+  }
+  $('foot').innerHTML = `<div class="fh">plan changes <span class="when">· <span class="t-ago" data-at="${M.driftAt}"></span> ago</span></div>
+    <div class="feed">${lines.join('')}</div>
+    <div class="btns"><button onclick="askWhyAll()">ask why ↗</button><button onclick="acceptAll()">accept</button></div>`
+}
+function ctx(n) { return n.level === 'phase' ? 'phase' : 'task' }
 
 function renderTimes() {
   for (const el of document.querySelectorAll('.t-ago')) el.textContent = ago(+el.dataset.at)
-  renderSafe()
 }
-
-// favicon dot mirrors the header state: teal = safe, amber = review needed
 function favicon(color) {
   $('fav').href = 'data:image/svg+xml,' + encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="${color}"/></svg>`)
 }
 
-function renderSafe() {
-  const drift = M.plan.filter(n => n.diff).length + M.removed.length + M.newDecisions.length
-  const el = $('safe')
-  favicon(drift ? '#fbbf24' : '#2dd4bf')
-  document.title = drift ? `(${drift}) agenttrail · ${M.session.project}` : `agenttrail · ${M.session.project}`
-  const stale = M.activity && M.planMtime && M.activity.at - M.planMtime > 20 * 60e3 && Date.now() - M.activity.at < 10 * 60e3
-  if (drift) { el.textContent = `${drift} unreviewed change${drift > 1 ? 's' : ''}`; el.className = 'safe amberish' }
-  else if (stale) { el.textContent = `plan untouched ${ago(M.planMtime)}, repo moving`; el.className = 'safe amberish' }
-  else { el.textContent = 'coffee is safe'; el.className = 'safe' }
+function togglePhase(id) {
+  if (isOpen(M.plan.find(n => n.id === id))) { userOpen.delete(id); userClosed.add(id) }
+  else { userClosed.delete(id); userOpen.add(id) }
+  render()
 }
-
-function renderFeed() {
-  let html = ''
-  for (const d of M.newDecisions) {
-    html += `<div class="entry"><span class="amber">decision</span><span>${esc(d)}</span>
-      <button onclick="askWhyText('${esc(d).replace(/'/g, '&#39;')}')">ask why</button>
-      <button class="primary" onclick="acceptKind('decisions')">accept</button></div>`
-  }
-  for (const r of M.removed) {
-    html += `<div class="entry"><span class="amber">removed</span><span>${esc(r.title)}</span>
-      <button onclick="askWhyText('why was &quot;${esc(r.title)}&quot; removed from the plan?')">ask why</button>
-      <button class="primary" onclick="acceptRemoved('${r.id}')">accept</button></div>`
-  }
-  $('feed').innerHTML = html
-}
-
-function toggle(id) { open.has(id) ? open.delete(id) : open.add(id); render() }
-function post(body) { fetch('/accept', { method: 'POST', body: JSON.stringify(body) }) }
-function acceptNode(id) { open.delete(id); post({ kind: 'node', id }) }
-function acceptRemoved(id) { post({ kind: 'removed', id }) }
-function acceptKind(kind) { post({ kind }) }
-
-function askWhy(id) {
+function toggleDiff(id) {
   const n = M.plan.find(x => x.id === id)
-  const q = n.diff.kind === 'added'
-    ? `you added "${n.title}" to the plan — why, and what does it unblock?`
-    : `the plan item "${n.diff.removed[0]}" changed to "${n.diff.added[0]}" — why?`
-  copy(q)
+  if (n && !isOpen(n) && n.level === 'phase') { userClosed.delete(id); userOpen.add(id) }
+  openDiff.has(id) ? openDiff.delete(id) : openDiff.add(id)
+  render()
 }
-function askWhyText(t) { copy(t.startsWith('why') ? t : `why this decision: "${t}"?`) }
+const post = b => fetch('/accept', { method: 'POST', body: JSON.stringify(b) })
+function acceptNode(id) { openDiff.delete(id); post({ kind: 'node', id }) }
+async function acceptAll() {
+  for (const n of M.plan.filter(n => n.diff)) await post({ kind: 'node', id: n.id })
+  for (const r of M.removed) await post({ kind: 'removed', id: r.id })
+  if (M.newDecisions.length) await post({ kind: 'decisions' })
+  openDiff.clear()
+}
+function askWhyNode(id) {
+  const n = M.plan.find(x => x.id === id)
+  copy(n.diff.kind === 'added'
+    ? `you added "${n.title}" to the plan — why, and what does it unblock?`
+    : `the plan item "${n.diff.removed[0]}" changed to "${n.diff.added[0]}" — why?`)
+}
+function askWhyAll() {
+  const parts = []
+  for (const n of M.plan.filter(n => n.diff)) parts.push(n.diff.kind === 'added' ? `added "${n.title}"` : `changed "${n.diff.removed[0]}" to "${n.diff.added[0]}"`)
+  for (const r of M.removed) parts.push(`removed "${r.title}"`)
+  for (const d of M.newDecisions) parts.push(`decided: "${d}"`)
+  copy(`walk me through these plan changes — ${parts.join('; ')}. why each one?`)
+}
 function copy(q) {
   navigator.clipboard.writeText(q).then(() => {
     const t = $('toast'); t.textContent = 'question copied — paste it to your agent'

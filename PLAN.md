@@ -15,9 +15,11 @@ needs: [v0]
 ## v1 · flow graph {#v1}
 needs: [v05]
 - [ ] scryer teardown {#v1-scryer}
-- [ ] react-flow live graph {#v1-graph}
+- [x] flow graph view (zero-dep svg) {#v1-graph}
+- [x] mockup-fidelity card ui + drill-down {#v1-card-ui}
 
 ## decisions
 - 2026-08-21: spine is the codebase (fs watcher + PLAN.md), not agent hooks; hooks become an optional fidelity adapter
 - 2026-08-21: serve index.html fresh per request (no startup cache) so UI edits land without daemon restart
 - 2026-08-21: filter editor atomic-write tmp files from the activity signal
+- 2026-08-21: graph is hand-rolled svg, not react-flow — keeps the daemon zero-dep and the page build-free; revisit if graphs outgrow ~50 nodes
