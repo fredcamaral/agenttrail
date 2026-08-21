@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agenttrail</title>
+<link id="fav" rel="icon" href="">
+
 <style>
   :root {
     --bg: #0f1115; --panel: #14171d; --text: #d7dae0; --dim: #6b7280;
@@ -166,9 +168,17 @@ function renderTimes() {
   renderSafe()
 }
 
+// favicon dot mirrors the header state: teal = safe, amber = review needed
+function favicon(color) {
+  $('fav').href = 'data:image/svg+xml,' + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="${color}"/></svg>`)
+}
+
 function renderSafe() {
   const drift = M.plan.filter(n => n.diff).length + M.removed.length + M.newDecisions.length
   const el = $('safe')
+  favicon(drift ? '#fbbf24' : '#2dd4bf')
+  document.title = drift ? `(${drift}) agenttrail · ${M.session.project}` : `agenttrail · ${M.session.project}`
   const stale = M.activity && M.planMtime && M.activity.at - M.planMtime > 20 * 60e3 && Date.now() - M.activity.at < 10 * 60e3
   if (drift) { el.textContent = `${drift} unreviewed change${drift > 1 ? 's' : ''}`; el.className = 'safe amberish' }
   else if (stale) { el.textContent = `plan untouched ${ago(M.planMtime)}, repo moving`; el.className = 'safe amberish' }

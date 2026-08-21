@@ -14,10 +14,12 @@ const argv = process.argv.slice(2)
 let cmd = null
 let repo = process.cwd()
 let port = 5330
+let openBrowser = false
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === 'init') cmd = 'init'
   else if (a === '--port') port = parseInt(argv[++i], 10)
+  else if (a === '--open') openBrowser = true
   else repo = path.resolve(a)
 }
 const planPath = path.join(repo, 'PLAN.md')
@@ -142,12 +144,14 @@ function broadcast() {
 
 // ---------- watcher ----------
 const IGNORE = /(^|\/)(\.git|node_modules|\.agenttrail|dist|build|\.next|__pycache__|\.venv)(\/|$)/
+// editor/tool atomic-write droppings — not real activity targets
+const TMP_FILE = /(\.tmp(\.|$)|~$|\.swp$|\.swx$|(^|\/)\.#|(^|\/)#.+#$|\.DS_Store$)/
 let planDebounce = null
 try {
   fs.watch(repo, { recursive: true }, (_ev, filename) => {
     if (!filename) return
     const f = filename.toString()
-    if (IGNORE.test(f)) return
+    if (IGNORE.test(f) || TMP_FILE.test(f)) return
     if (path.resolve(repo, f) === planPath) {
       clearTimeout(planDebounce)
       planDebounce = setTimeout(() => {
@@ -189,11 +193,11 @@ function accept(body) {
 }
 
 // ---------- http ----------
-const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8')
+const indexPath = path.join(__dirname, '..', 'public', 'index.html')
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x')
   if (u.pathname === '/') {
-    res.writeHead(200, { 'content-type': 'text/html' }).end(indexHtml)
+    res.writeHead(200, { 'content-type': 'text/html' }).end(fs.readFileSync(indexPath, 'utf8'))
   } else if (u.pathname === '/model') {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(model()))
   } else if (u.pathname === '/events') {
@@ -214,6 +218,10 @@ const server = http.createServer((req, res) => {
 server.listen(port, '127.0.0.1', () => {
   console.log(`agenttrail · ${session.project} · http://localhost:${port}`)
   if (!planText) console.log('no PLAN.md found — run `agenttrail init` in the repo to scaffold one')
+  if (openBrowser) {
+    const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open'
+    import('node:child_process').then(cp => cp.spawn(opener, [`http://localhost:${port}`], { stdio: 'ignore', detached: true }))
+  }
 })
 
 // ---------- init ----------
