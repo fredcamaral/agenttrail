@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agenttrail</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #14171d; --text: #d7dae0; --dim: #6b7280;
+    --teal: #2dd4bf; --amber: #fbbf24; --red: #f87171; --green: #4ade80;
+    --line: #1f242c;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    max-width: 720px; margin: 0 auto; padding: 32px 20px 80px;
+  }
+  header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 24px; }
+  header h1 { font-size: 15px; font-weight: 600; }
+  header .proj { color: var(--dim); }
+  header .safe { margin-left: auto; font-size: 12px; color: var(--dim); }
+  header .safe.amberish { color: var(--amber); }
+
+  .phase { margin-bottom: 6px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px; }
+  .row .icon { width: 16px; text-align: center; flex: none; }
+  .row .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .meta { margin-left: auto; color: var(--dim); font-size: 12px; flex: none; }
+  .phase > .row { font-weight: 600; }
+  .phase .needs { color: var(--dim); font-size: 11px; font-weight: 400; }
+  .tasks { margin-left: 24px; }
+
+  .done .icon { color: var(--teal); }
+  .done .title { color: var(--dim); }
+  .pending .icon, .pending .title { color: var(--dim); }
+  .active { background: var(--panel); }
+  .active .icon { color: var(--teal); }
+  .revised .title { color: var(--amber); }
+  .pill {
+    font-size: 10px; padding: 1px 7px; border-radius: 999px; flex: none;
+    border: 1px dashed var(--amber); color: var(--amber); cursor: pointer;
+  }
+  .live { color: var(--dim); font-size: 12px; margin-left: 24px; padding: 2px 8px 6px; }
+  .live .dot { color: var(--teal); }
+
+  .spin { display: inline-block; animation: spin 1.2s steps(8) infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .diffbox { margin: 4px 0 10px 32px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; font-size: 12px; }
+  .diffbox .rm { color: var(--red); }
+  .diffbox .ad { color: var(--green); }
+  .diffbox .actions { margin-top: 8px; display: flex; gap: 8px; }
+  button {
+    font: 11px ui-monospace, monospace; background: none; border: 1px solid var(--line);
+    color: var(--text); border-radius: 5px; padding: 3px 10px; cursor: pointer;
+  }
+  button:hover { border-color: var(--dim); }
+  button.primary { border-color: var(--teal); color: var(--teal); }
+
+  footer { margin-top: 36px; border-top: 1px solid var(--line); padding-top: 14px; font-size: 12px; color: var(--dim); }
+  footer .entry { padding: 3px 0; display: flex; gap: 8px; align-items: baseline; }
+  footer .entry .amber { color: var(--amber); }
+  .legend { margin-top: 20px; font-size: 11px; color: var(--dim); }
+  .legend .t { color: var(--teal); } .legend .a { color: var(--amber); }
+  .empty { color: var(--dim); padding: 40px 0; text-align: center; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 8px 16px; font-size: 12px; opacity: 0; transition: opacity .2s; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>agenttrail</h1>
+  <span class="proj" id="proj"></span>
+  <span class="safe" id="safe"></span>
+</header>
+<main id="plan"></main>
+<footer>
+  <div id="feed"></div>
+  <div class="legend"><span class="t">●</span> done / active &nbsp; <span style="color:var(--dim)">○</span> pending &nbsp; <span class="a">◌</span> revised — click the pill</div>
+</footer>
+<div class="toast" id="toast"></div>
+<script>
+let M = null
+const open = new Set() // node ids with expanded diffbox
+const $ = id => document.getElementById(id)
+
+const es = new EventSource('/events')
+es.onmessage = e => { M = JSON.parse(e.data); render() }
+setInterval(() => { if (M) renderTimes() }, 1000)
+
+function ago(ms) {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000))
+  return s < 60 ? s + 's' : Math.round(s / 60) + 'm'
+}
+
+function icon(n) {
+  if (n.diff) return '◌'
+  if (n.status === 'done') return '✓'
+  if (n.status === 'active') return '<span class="spin">◠</span>'
+  return '○'
+}
+
+function esc(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) }
+
+function diffbox(n) {
+  if (!open.has(n.id) || !n.diff) return ''
+  const rm = n.diff.removed.map(l => `<div class="rm">- ${esc(l)}</div>`).join('')
+  const ad = n.diff.added.map(l => `<div class="ad">+ ${esc(l)}</div>`).join('')
+  return `<div class="diffbox">${rm}${ad}
+    <div class="actions">
+      <button onclick="askWhy('${n.id}')">ask why</button>
+      <button class="primary" onclick="acceptNode('${n.id}')">accept</button>
+    </div></div>`
+}
+
+function row(n, extraMeta, suffix) {
+  const cls = [n.level, n.status, n.diff ? 'revised' : ''].join(' ')
+  const pill = n.diff ? `<span class="pill" onclick="toggle('${n.id}')">${n.diff.kind}</span>` : ''
+  return `<div class="row ${cls}"><span class="icon">${icon(n)}</span>
+    <span class="title">${esc(n.title)}${suffix || ''}</span>${pill}
+    <span class="meta">${extraMeta || ''}</span></div>${diffbox(n)}`
+}
+
+function render() {
+  $('proj').textContent = M.session.project
+  const plan = $('plan')
+  if (!M.hasPlan) {
+    plan.innerHTML = `<div class="empty">no PLAN.md — run <b>agenttrail init</b> in the repo</div>` + workingRow()
+    renderSafe(); renderFeed(); return
+  }
+  const phases = M.plan.filter(n => n.level === 'phase')
+  let html = ''
+  for (const p of phases) {
+    const kids = M.plan.filter(n => n.parent === p.id)
+    const done = kids.filter(k => k.status === 'done').length
+    const needs = p.needs.length ? ` <span class="needs">needs: ${esc(p.needs.join(', '))}</span>` : ''
+    html += `<div class="phase">` + row(p, `${done}/${kids.length}`, needs)
+    html += `<div class="tasks">`
+    for (const k of kids) {
+      html += row(k)
+      if (k.status === 'active' && M.activity) html += liveLine()
+    }
+    html += `</div></div>`
+  }
+  // orphan tasks (no phase)
+  for (const k of M.plan.filter(n => n.level === 'task' && !n.parent)) html += row(k)
+  if (!M.plan.some(n => n.status === 'active') && M.activity) html += workingRow()
+  plan.innerHTML = html
+  renderSafe(); renderFeed(); renderTimes()
+}
+
+function liveLine() {
+  return `<div class="live"><span class="dot">●</span> editing ${esc(M.activity.file)} · <span class="t-ago" data-at="${M.activity.at}"></span> ago</div>`
+}
+function workingRow() {
+  if (!M.activity) return ''
+  return `<div class="row active"><span class="icon"><span class="spin">◠</span></span>
+    <span class="title">working</span><span class="meta">${esc(M.activity.file)} · <span class="t-ago" data-at="${M.activity.at}"></span> ago</span></div>`
+}
+
+function renderTimes() {
+  for (const el of document.querySelectorAll('.t-ago')) el.textContent = ago(+el.dataset.at)
+  renderSafe()
+}
+
+function renderSafe() {
+  const drift = M.plan.filter(n => n.diff).length + M.removed.length + M.newDecisions.length
+  const el = $('safe')
+  const stale = M.activity && M.planMtime && M.activity.at - M.planMtime > 20 * 60e3 && Date.now() - M.activity.at < 10 * 60e3
+  if (drift) { el.textContent = `${drift} unreviewed change${drift > 1 ? 's' : ''}`; el.className = 'safe amberish' }
+  else if (stale) { el.textContent = `plan untouched ${ago(M.planMtime)}, repo moving`; el.className = 'safe amberish' }
+  else { el.textContent = 'coffee is safe'; el.className = 'safe' }
+}
+
+function renderFeed() {
+  let html = ''
+  for (const d of M.newDecisions) {
+    html += `<div class="entry"><span class="amber">decision</span><span>${esc(d)}</span>
+      <button onclick="askWhyText('${esc(d).replace(/'/g, '&#39;')}')">ask why</button>
+      <button class="primary" onclick="acceptKind('decisions')">accept</button></div>`
+  }
+  for (const r of M.removed) {
+    html += `<div class="entry"><span class="amber">removed</span><span>${esc(r.title)}</span>
+      <button onclick="askWhyText('why was &quot;${esc(r.title)}&quot; removed from the plan?')">ask why</button>
+      <button class="primary" onclick="acceptRemoved('${r.id}')">accept</button></div>`
+  }
+  $('feed').innerHTML = html
+}
+
+function toggle(id) { open.has(id) ? open.delete(id) : open.add(id); render() }
+function post(body) { fetch('/accept', { method: 'POST', body: JSON.stringify(body) }) }
+function acceptNode(id) { open.delete(id); post({ kind: 'node', id }) }
+function acceptRemoved(id) { post({ kind: 'removed', id }) }
+function acceptKind(kind) { post({ kind }) }
+
+function askWhy(id) {
+  const n = M.plan.find(x => x.id === id)
+  const q = n.diff.kind === 'added'
+    ? `you added "${n.title}" to the plan — why, and what does it unblock?`
+    : `the plan item "${n.diff.removed[0]}" changed to "${n.diff.added[0]}" — why?`
+  copy(q)
+}
+function askWhyText(t) { copy(t.startsWith('why') ? t : `why this decision: "${t}"?`) }
+function copy(q) {
+  navigator.clipboard.writeText(q).then(() => {
+    const t = $('toast'); t.textContent = 'question copied — paste it to your agent'
+    t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200)
+  })
+}
+</script>
+</body>
+</html>
