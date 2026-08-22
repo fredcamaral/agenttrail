@@ -120,7 +120,7 @@ function computeDrift(parsed, base) {
 const session = { id: Math.random().toString(36).slice(2, 10), project: path.basename(repo), startedAt: new Date().toISOString() }
 let planText = safeRead(planPath)
 let parsed = parsePlan(planText)
-let baseline = loadBaseline(parsed)
+const baseline = loadBaseline(parsed) // last-reviewed plan state, persisted in .agenttrail/baseline.json
 let activity = null // { file, at } — most recent non-plan repo write
 let recentActivity = [] // last N writes, newest first — feeds the live-view drill-down
 let planMtime = statMtime(planPath)
@@ -192,6 +192,8 @@ function throttleBroadcast() {
 }
 
 // ---------- accept / reviews ----------
+// Accepting a change moves the baseline forward for that node (or the
+// decisions list) and logs the review — this is what clears amber everywhere.
 function accept(body) {
   const { kind, id } = body
   if (kind === 'node' && id) {

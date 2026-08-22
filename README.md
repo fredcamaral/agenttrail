@@ -6,7 +6,7 @@ agenttrail watches your **repo**, not your agent. It renders the plan your agent
 
 > agentmap helps your agent see your code. agenttrail helps you see your agent.
 
-![agenttrail watching a live session: tasks progressing, a plan revision going amber, the diff reviewed and accepted](docs/demo.gif)
+![agenttrail watching a live session: tasks progressing and a plan revision appearing in the read-only change history](docs/demo.gif)
 
 ## quick start
 
@@ -45,10 +45,11 @@ needs: [p1]
 
 - phases and tasks with live status; the in-progress task carries a live "editing src/… · 4s ago" line from the fs watcher
 - **status flips are progress, not drift** — checking off a task never demands your attention
-- title changes, added/removed nodes, and new decisions turn **amber** until you review them: click the pill → see the red/green diff → **accept** (clears everywhere) or **ask why** (copies a formed question to paste to your agent)
-- header reads "coffee is safe" when there's nothing to review
+- title changes, added or removed nodes, and new decisions turn **amber** in the change history: **accept** clears them from every view, **ask why** copies a formed question to paste to your agent
+- click any flow node to show a tethered PLAN.md card beneath it while keeping the original node and graph visible; multiple cards can stay open
+- header reads "plan is steady" when no structural changes are detected
 
-Review state lives in `.agenttrail/` (baseline snapshot + `reviews.jsonl`), never in PLAN.md itself.
+Review state lives in `.agenttrail/` (baseline snapshot + `reviews.jsonl`) — the interface never modifies PLAN.md itself, and accepted changes stay cleared across restarts.
 
 ## architecture
 
@@ -56,7 +57,7 @@ Codebase-grounded: fs watcher + PLAN.md are the spine. Agent-specific event stre
 
 ## roadmap
 
-- flow graph of the plan (react-flow, `needs:` edges, drill-down)
+- scryer teardown + positioning notes
 - ARCHITECTURE.md layer: component globs, import-edge drift, deny rules
 - Claude Code hooks adapter (live tool line, todo sync)
 - menu bar / vscode / tui renderers on the same stream
