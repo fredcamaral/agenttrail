@@ -22,29 +22,33 @@ All local. No cloud, no accounts, no hooks required.
 ```markdown
 # my project
 
-## phase 1 · audio pipeline {#p1}
-- [x] capture layer {#p1-capture}
-- [~] ring buffer {#p1-ring}
+## Capture the audio {#capture}
+tech: coreaudio tap + ring buffer
+- [x] Grab the mic feed {#capture-mic}
+- [~] Keep the last 30 seconds ready {#capture-ring}
+  tech: lock-free ring buffer
 
-## phase 2 · classification {#p2}
-needs: [p1]
-- [ ] dedupe window {#p2-dedupe}
+## Decide what matters {#classify}
+needs: [capture]
+links: [notify]
+- [ ] Score events by urgency {#classify-score}
 
 ## decisions
 - 2026-08-21: dropped redis for summaries; in-process queue instead
 ```
 
-- every phase (`## title {#id}`) and task (`- [ ] title {#id}`) carries a **stable `{#id}`** — never renamed, only added or removed
+- nodes are **components** of the system (`## Plain-language name {#id}`), not phases — titles are verb-led outcomes the owner understands; the engineer phrasing lives on a `tech:` line and shows on drill-down
+- every component and task carries a **stable `{#id}`** — never renamed, only added or removed
 - `- [~]` marks the task in progress, `- [x]` done
-- `needs: [id, id]` under a phase heading declares cross-phase dependencies
+- `needs: [id]` = must come after those components (drawn as arrows); `links: [id]` = interconnected with (drawn as dashed ties)
 - plan-affecting decisions are recorded under `## decisions` **before** implementing them
 
-`agenttrail init` writes the instruction block that tells your agent to maintain this.
+`agenttrail init` writes the instruction block that tells your agent to maintain this — including the naming rule, so plans are written for the person supervising, not the agent doing.
 
 ## what you see
 
 - phases and tasks with live status; the in-progress task carries a live "editing src/… · 4s ago" line from the fs watcher
-- a pan/zoom flow diagram of the phases along their `needs:` edges; click a node to unfold its tasks as capsules with per-task detail
+- a pan/zoom flow diagram of the components — `needs:` edges as arrows, `links:` as dashed ties; click a node to unfold its tasks as capsules with per-task detail (including the `tech:` line)
 - an inspector panel with phase progress, dependencies, and the latest repository activity
 
 The monitor is read-only — it never modifies PLAN.md or anything else in your repo.

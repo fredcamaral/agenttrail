@@ -27,47 +27,56 @@ const atDir = path.join(repo, '.agenttrail')
 
 if (cmd === 'init') { init(); process.exit(0) }
 
-// ---------- PLAN.md parser ----------
-const PHASE_RE = /^##\s+(.+?)\s*\{#([a-z0-9][a-z0-9-]*)\}\s*$/i
+// ---------- PLAN.md parser (convention v2: components, owner-first names) ----------
+// `## Plain-language name {#id}` = a component of the system, not a phase.
+// `tech:` under a component or task carries the engineer phrasing.
+// `needs: [id]` = directed sequencing edge; `links: [id]` = undirected coupling.
+const NODE_RE = /^##\s+(.+?)\s*\{#([a-z0-9][a-z0-9-]*)\}\s*$/i
 const TASK_RE = /^\s*[-*]\s+\[( |x|~)\]\s+(.+?)\s*\{#([a-z0-9][a-z0-9-]*)\}\s*$/i
 const NEEDS_RE = /^needs:\s*\[([^\]]*)\]\s*$/i
+const LINKS_RE = /^links:\s*\[([^\]]*)\]\s*$/i
+const TECH_RE = /^\s*tech:\s*(.+?)\s*$/i
 const DECISIONS_RE = /^##\s+decisions\s*$/i
+const idList = s => s.split(',').map(x => x.trim()).filter(Boolean)
 
 function parsePlan(text) {
   const nodes = [] // ordered
   const decisions = []
   let title = ''
-  let curPhase = null
+  let curComponent = null
+  let lastNode = null // tech: lines attach to the most recent component or task
   let inDecisions = false
   for (const raw of text.split('\n')) {
     const line = raw.trimEnd()
     if (!title && /^#\s+/.test(line)) { title = line.replace(/^#\s+/, ''); continue }
-    if (DECISIONS_RE.test(line)) { inDecisions = true; curPhase = null; continue }
+    if (DECISIONS_RE.test(line)) { inDecisions = true; curComponent = null; lastNode = null; continue }
     let m
-    if ((m = line.match(PHASE_RE))) {
+    if ((m = line.match(NODE_RE))) {
       inDecisions = false
-      curPhase = { id: m[2], title: m[1], level: 'phase', parent: null, needs: [], status: 'pending' }
-      nodes.push(curPhase)
+      curComponent = { id: m[2], title: m[1], level: 'component', parent: null, needs: [], links: [], tech: '', status: 'pending' }
+      lastNode = curComponent
+      nodes.push(curComponent)
       continue
     }
     if (inDecisions) {
       if (/^\s*[-*]\s+/.test(line)) decisions.push(line.replace(/^\s*[-*]\s+/, ''))
       continue
     }
-    if ((m = line.match(NEEDS_RE))) {
-      if (curPhase) curPhase.needs = m[1].split(',').map(s => s.trim()).filter(Boolean)
-      continue
-    }
     if ((m = line.match(TASK_RE))) {
       const status = m[1] === 'x' ? 'done' : m[1] === '~' ? 'active' : 'pending'
-      nodes.push({ id: m[3], title: m[2], level: 'task', parent: curPhase ? curPhase.id : null, needs: [], status })
+      lastNode = { id: m[3], title: m[2], level: 'task', parent: curComponent ? curComponent.id : null, needs: [], links: [], tech: '', status }
+      nodes.push(lastNode)
+      continue
     }
+    if ((m = line.match(TECH_RE))) { if (lastNode) lastNode.tech = m[1]; continue }
+    if ((m = line.match(NEEDS_RE))) { if (curComponent) curComponent.needs = idList(m[1]); continue }
+    if ((m = line.match(LINKS_RE))) { if (curComponent) curComponent.links = idList(m[1]); continue }
   }
-  // derive phase status from children
-  for (const p of nodes.filter(n => n.level === 'phase')) {
-    const kids = nodes.filter(n => n.parent === p.id)
-    if (kids.some(k => k.status === 'active')) p.status = 'active'
-    else if (kids.length && kids.every(k => k.status === 'done')) p.status = 'done'
+  // derive component status from its tasks
+  for (const c of nodes.filter(n => n.level === 'component')) {
+    const kids = nodes.filter(n => n.parent === c.id)
+    if (kids.some(k => k.status === 'active')) c.status = 'active'
+    else if (kids.length && kids.every(k => k.status === 'done')) c.status = 'done'
   }
   return { nodes, decisions, title }
 }
@@ -187,8 +196,9 @@ function init() {
   if (!fs.existsSync(planPath)) {
     fs.writeFileSync(planPath, `# ${path.basename(repo)}
 
-## phase 1 · setup {#p1}
-- [ ] first task {#p1-first}
+## Set up the project {#setup}
+tech: scaffolding
+- [ ] First task {#setup-first}
 
 ## decisions
 `)
@@ -196,7 +206,7 @@ function init() {
   }
   const claudeMd = path.join(repo, 'CLAUDE.md')
   const marker = '<!-- agenttrail -->'
-  const snippet = `\n${marker}\n## agenttrail plan convention\nMaintain PLAN.md as the living plan:\n- every phase (\`## title {#id}\`) and task (\`- [ ] title {#id}\`) carries a stable \`{#id}\` — never rename ids, only add or remove nodes\n- mark the task you are currently working on \`[~]\`, completed tasks \`[x]\`\n- declare cross-phase dependencies with a \`needs: [id, id]\` line under the phase heading\n- record any plan-affecting decision under \`## decisions\` BEFORE implementing it\n`
+  const snippet = `\n${marker}\n## agenttrail plan convention\nMaintain PLAN.md as the living plan. It is read by the project OWNER, not by you — write it for them.\n- nodes are COMPONENTS of the system being built (\`## Plain-language name {#id}\`), not phases or sprints\n- naming rule: titles are verb-led, plain-language outcomes a non-engineer understands ("Watch the repo", "Draw the live map" — never "fs watcher + activity signal"); put the engineer phrasing on a \`tech:\` line under the heading\n- tasks inside a component: \`- [ ] Plain outcome {#id}\`, optional indented \`tech:\` line beneath; mark the one you are working on \`[~]\`, completed \`[x]\`\n- edges under a component heading: \`needs: [id, id]\` = must come after those components; \`links: [id, id]\` = interconnected with / talks to\n- \`{#id}\`s are stable — never rename, only add or remove nodes\n- record any plan-affecting decision under \`## decisions\` BEFORE implementing it\n`
   const existing = safeRead(claudeMd)
   if (!existing.includes(marker)) {
     fs.appendFileSync(claudeMd, snippet)
