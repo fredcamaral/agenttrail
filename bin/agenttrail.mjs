@@ -132,8 +132,8 @@ function touchComponents(file, at) {
   for (const m of compMatchers) if (m.res.some(re => re.test(file))) {
     compTouched[m.id] = at
     const arr = compRecent[m.id] || (compRecent[m.id] = [])
-    if (arr[0] && arr[0].file === file) arr[0] = { file, at }
-    else arr.unshift({ file, at })
+    if (arr[0] && arr[0].file === file) arr[0] = { file, at, n: (arr[0].n || 1) + 1 }
+    else arr.unshift({ file, at, n: 1 })
     if (arr.length > 6) arr.length = 6
   }
 }
