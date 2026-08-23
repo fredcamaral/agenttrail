@@ -43,7 +43,7 @@ links: [notify]
 - `needs: [id]` = must come after those components (drawn as arrows); `links: [id]` = interconnected with (drawn as dashed ties)
 - plan-affecting decisions are recorded under `## decisions` **before** implementing them
 
-`agenttrail init` writes the instruction block that tells your agent to maintain this — including the naming rule, so plans are written for the person supervising, not the agent doing.
+`agenttrail init` writes the instruction block into both CLAUDE.md (Claude Code) and AGENTS.md (Codex, Cursor, and friends) — including the naming rule, so plans are written for the person supervising, not the agent doing. The monitor itself is agent-blind: it watches files, so anything that edits the repo shows up.
 
 ## what you see
 

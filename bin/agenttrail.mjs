@@ -205,13 +205,16 @@ tech: scaffolding
 `)
     console.log('wrote PLAN.md skeleton')
   }
-  const claudeMd = path.join(repo, 'CLAUDE.md')
   const marker = '<!-- agenttrail -->'
   const snippet = `\n${marker}\n## agenttrail plan convention\nMaintain PLAN.md as the living plan. It is read by the project OWNER, not by you — write it for them.\n- nodes are COMPONENTS of the system being built (\`## Plain-language name {#id}\`), not phases or sprints\n- naming rule: titles are verb-led, plain-language outcomes a non-engineer understands ("Watch the repo", "Draw the live map" — never "fs watcher + activity signal"); put the engineer phrasing on a \`tech:\` line under the heading\n- tasks inside a component: \`- [ ] Plain outcome {#id}\`, optional indented \`tech:\` line beneath; mark the one you are working on \`[~]\`, completed \`[x]\`, stuck/failing \`[!]\` (clear \`[!]\` once unblocked)\n- edges under a component heading: \`needs: [id, id]\` = must come after those components; \`links: [id, id]\` = interconnected with / talks to\n- \`{#id}\`s are stable — never rename, only add or remove nodes\n- record any plan-affecting decision under \`## decisions\` BEFORE implementing it\n`
-  const existing = safeRead(claudeMd)
-  if (!existing.includes(marker)) {
-    fs.appendFileSync(claudeMd, snippet)
-    console.log('appended agenttrail convention block to CLAUDE.md')
+  // CLAUDE.md is read by Claude Code, AGENTS.md by Codex/Cursor and friends —
+  // the convention block goes in both so any agent maintains the same plan.
+  for (const name of ['CLAUDE.md', 'AGENTS.md']) {
+    const p = path.join(repo, name)
+    if (!safeRead(p).includes(marker)) {
+      fs.appendFileSync(p, snippet)
+      console.log(`appended agenttrail convention block to ${name}`)
+    }
   }
   const gi = path.join(repo, '.gitignore')
   const giText = safeRead(gi)
