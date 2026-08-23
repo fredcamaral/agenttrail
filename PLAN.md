@@ -2,6 +2,7 @@
 
 ## Read the plan file {#plan-reader}
 tech: PLAN.md parser + derived model
+files: [bin/**]
 - [x] Read the plan file into a live model {#plan-parse}
   by: claude
   tech: stable {#id}s, needs/links edges, [~] active marker
@@ -11,6 +12,7 @@ tech: PLAN.md parser + derived model
 ## Watch the repo {#watcher}
 tech: recursive fs watcher
 links: [explorer]
+files: [bin/**]
 - [x] Notice every file the agent touches {#watch-files}
   by: claude
 - [x] Ignore editor droppings and junk folders {#watch-filter}
@@ -20,6 +22,7 @@ links: [explorer]
 tech: svg flow diagram + task capsules
 needs: [plan-reader]
 links: [explorer]
+files: [public/**]
 - [x] Show components and how they connect {#map-graph}
   tech: needs = arrows, links = dashed, deterministic layout
   by: claude
@@ -31,11 +34,13 @@ links: [explorer]
 ## Show the repo like an editor {#explorer}
 tech: vs-code-style file tree
 needs: [watcher]
+files: [public/**]
 - [x] Folder tree with live "just touched" accents {#explorer-tree}
   by: claude
 
 ## Ship to GitHub and npm {#ship}
 needs: [map, explorer]
+files: [README.md, docs/**, package.json]
 - [x] Public repo and readme {#ship-repo}
 - [x] Fresh demo gif of the current look {#ship-gif}
   by: claude

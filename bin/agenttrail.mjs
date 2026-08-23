@@ -35,6 +35,7 @@ const NODE_RE = /^##\s+(.+?)\s*\{#([a-z0-9][a-z0-9-]*)\}\s*$/i
 const TASK_RE = /^\s*[-*]\s+\[( |x|~|!)\]\s+(.+?)\s*\{#([a-z0-9][a-z0-9-]*)\}\s*$/i
 const NEEDS_RE = /^needs:\s*\[([^\]]*)\]\s*$/i
 const LINKS_RE = /^links:\s*\[([^\]]*)\]\s*$/i
+const FILES_RE = /^files:\s*\[([^\]]*)\]\s*$/i
 const TECH_RE = /^\s*tech:\s*(.+?)\s*$/i
 const BY_RE = /^\s*by:\s*(.+?)\s*$/i
 const DECISIONS_RE = /^##\s+decisions\s*$/i
@@ -54,7 +55,7 @@ function parsePlan(text) {
     let m
     if ((m = line.match(NODE_RE))) {
       inDecisions = false
-      curComponent = { id: m[2], title: m[1], level: 'component', parent: null, needs: [], links: [], tech: '', by: '', status: 'pending' }
+      curComponent = { id: m[2], title: m[1], level: 'component', parent: null, needs: [], links: [], files: [], tech: '', by: '', status: 'pending' }
       lastNode = curComponent
       nodes.push(curComponent)
       continue
@@ -73,6 +74,7 @@ function parsePlan(text) {
     if ((m = line.match(BY_RE))) { if (lastNode) lastNode.by = m[1]; continue }
     if ((m = line.match(NEEDS_RE))) { if (curComponent) curComponent.needs = idList(m[1]); continue }
     if ((m = line.match(LINKS_RE))) { if (curComponent) curComponent.links = idList(m[1]); continue }
+    if ((m = line.match(FILES_RE))) { if (curComponent) curComponent.files = idList(m[1]); continue }
   }
   // derive component status from its tasks — blocked wins (it demands attention)
   for (const c of nodes.filter(n => n.level === 'component')) {
@@ -92,6 +94,25 @@ let activity = null // { file, at } — most recent non-plan repo write
 let recentActivity = [] // last N writes, newest first — feeds the live-view drill-down
 let planMtime = statMtime(planPath)
 const clients = new Set()
+
+// ---------- observed activity per component (files: globs) ----------
+// Declared status ([~]/[x]) says what the agent claims; this says what the
+// filesystem shows. A component whose files are being written is live no
+// matter what its checkbox says — that is how "revising done work" stays visible.
+const compTouched = {} // component id -> last matching write ts
+function globToRe(g) {
+  if (!/[*?]/.test(g)) return new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&') + '(/|$)')
+  const esc = g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*')
+  return new RegExp('^' + esc + '$')
+}
+let compMatchers = []
+function rebuildMatchers() {
+  compMatchers = parsed.nodes.filter(n => n.level === 'component' && n.files.length)
+    .map(c => ({ id: c.id, res: c.files.map(globToRe) }))
+}
+function touchComponents(file, at) {
+  for (const m of compMatchers) if (m.res.some(re => re.test(file))) compTouched[m.id] = at
+}
 
 // ---------- repo tree (vs-code-style explorer, folders first) ----------
 const IGNORE = /(^|\/)(\.git|node_modules|\.agenttrail|dist|build|\.next|__pycache__|\.venv)(\/|$)/
@@ -115,6 +136,7 @@ function buildTree(dir, rel = '', depth = 0, budget = { n: 4000 }) {
 }
 let tree = buildTree(repo)
 let treeDirty = false
+rebuildMatchers()
 
 function safeRead(p) { try { return fs.readFileSync(p, 'utf8') } catch { return '' } }
 function statMtime(p) { try { return fs.statSync(p).mtimeMs } catch { return null } }
@@ -122,7 +144,7 @@ function statMtime(p) { try { return fs.statSync(p).mtimeMs } catch { return nul
 function model() {
   if (treeDirty) { tree = buildTree(repo); treeDirty = false }
   return {
-    session, plan: parsed.nodes, tree,
+    session, plan: parsed.nodes.map(n => n.level === 'component' ? { ...n, touchedAt: compTouched[n.id] || null } : n), tree,
     planTitle: parsed.title,
     hasPlan: planText.length > 0,
     activity, recentActivity, planMtime,
@@ -147,6 +169,7 @@ try {
       planDebounce = setTimeout(() => {
         planText = safeRead(planPath)
         parsed = parsePlan(planText)
+        rebuildMatchers()
         planMtime = statMtime(planPath)
         broadcast()
       }, 150)
@@ -155,6 +178,7 @@ try {
     // plain repo churn → liveness signal
     treeDirty = true
     activity = { file: f, at: Date.now() }
+    touchComponents(f, activity.at)
     if (!recentActivity.length || recentActivity[0].file !== f) recentActivity.unshift(activity)
     else recentActivity[0] = activity
     recentActivity = recentActivity.slice(0, 12)
@@ -208,7 +232,7 @@ tech: scaffolding
     console.log('wrote PLAN.md skeleton')
   }
   const marker = '<!-- agenttrail -->'
-  const snippet = `\n${marker}\n## agenttrail plan convention\nMaintain PLAN.md as the living plan. It is read by the project OWNER, not by you — write it for them.\n- nodes are COMPONENTS of the system being built (\`## Plain-language name {#id}\`), not phases or sprints\n- naming rule: titles are verb-led, plain-language, and CONCRETE — the owner can tell when it is done ("Read alerts out loud", "Watch the repo"). Never engineer-speak ("fs watcher + activity signal") and never vague vibes ("Decide what matters"); put the engineer phrasing on a \`tech:\` line under the heading\n- tasks inside a component: \`- [ ] Plain outcome {#id}\`, optional indented \`tech:\` line beneath; mark a task \`[~]\` BEFORE you start it and save PLAN.md immediately — this drives the live in-progress view; flip it to \`[x]\` the moment it completes, \`[!]\` if stuck (clear once unblocked). Never batch plan updates for the end of the session\n- when you mark a task \`[~]\`, add an indented \`by: <your name>\` line under it (claude, codex, cursor, …) and leave it there when done — it is the record of who did what\n- edges under a component heading: \`needs: [id, id]\` = must come after those components; \`links: [id, id]\` = interconnected with / talks to\n- \`{#id}\`s are stable — never rename, only add or remove nodes\n- record any plan-affecting decision under \`## decisions\` BEFORE implementing it\n`
+  const snippet = `\n${marker}\n## agenttrail plan convention\nMaintain PLAN.md as the living plan. It is read by the project OWNER, not by you — write it for them.\n- nodes are COMPONENTS of the system being built (\`## Plain-language name {#id}\`), not phases or sprints\n- naming rule: titles are verb-led, plain-language, and CONCRETE — the owner can tell when it is done ("Read alerts out loud", "Watch the repo"). Never engineer-speak ("fs watcher + activity signal") and never vague vibes ("Decide what matters"); put the engineer phrasing on a \`tech:\` line under the heading\n- tasks inside a component: \`- [ ] Plain outcome {#id}\`, optional indented \`tech:\` line beneath; mark a task \`[~]\` BEFORE you start it and save PLAN.md immediately — this drives the live in-progress view; flip it to \`[x]\` the moment it completes, \`[!]\` if stuck (clear once unblocked). Never batch plan updates for the end of the session\n- when you mark a task \`[~]\`, add an indented \`by: <your name>\` line under it (claude, codex, cursor, …) and leave it there when done — it is the record of who did what\n- edges under a component heading: \`needs: [id, id]\` = must come after those components; \`links: [id, id]\` = interconnected with / talks to\n- \`files: [src/audio/**, config.py]\` under a component declares which paths it owns — keep it current; it is how the live view knows which component you are really working in, including when you revisit finished work\n- \`{#id}\`s are stable — never rename, only add or remove nodes\n- record any plan-affecting decision under \`## decisions\` BEFORE implementing it\n`
   // CLAUDE.md is read by Claude Code, AGENTS.md by Codex/Cursor and friends —
   // the convention block goes in both so any agent maintains the same plan.
   for (const name of ['CLAUDE.md', 'AGENTS.md']) {

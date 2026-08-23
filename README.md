@@ -42,6 +42,7 @@ links: [notify]
 - `- [~]` marks the task in progress, `- [x]` done, `- [!]` stuck/failing — cards carry a status circle: green tick complete, amber spinner in progress, red `!` blocked
 - an indented `by: <agent>` line under a task records who took it (claude, codex, …) — shown as a colored chip on the task and rolled up as agent dots on the component card; it stays after completion as the record of who built what
 - `needs: [id]` = must come after those components (drawn as arrows); `links: [id]` = interconnected with (drawn as dashed ties)
+- `files: [src/audio/**]` declares which paths a component owns — this powers the **observed-activity ring**: whenever a component's files are being written, an amber ring spins around its status circle no matter what the checkbox says (Revising on a done component, Retrying on a blocked one, Editing otherwise). Declared status and observed activity are independent layers, so revisiting finished work is never invisible
 - plan-affecting decisions are recorded under `## decisions` **before** implementing them
 
 `agenttrail init` writes the instruction block into both CLAUDE.md (Claude Code) and AGENTS.md (Codex, Cursor, and friends) — including the naming rule, so plans are written for the person supervising, not the agent doing. The monitor itself is agent-blind: it watches files, so anything that edits the repo shows up.
