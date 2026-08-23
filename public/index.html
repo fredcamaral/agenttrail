@@ -32,7 +32,7 @@
 <div class="workspace"><aside class="sidebar" id="tree" aria-label="Repository files"><div class="tree-empty">Connecting to the live monitor…</div></aside><section class="primary graph-view" id="graph" aria-label="Plan flow diagram"></section></div></div>
 <div class="toast" id="toast" role="status"></div>
 <script>
-let M=null,graphZoom=1,graphPan={x:0,y:0},graphSize={width:0,height:0},graphNeedsFit=true,panGesture=null
+let M=null,lastGraphKey='',graphZoom=1,graphPan={x:0,y:0},graphSize={width:0,height:0},graphNeedsFit=true,panGesture=null
 const openGraphDetails=new Set(),openGraphTasks=new Set(),closedGraphTasks=new Set()
 const openFolders=new Set(),closedFolders=new Set();let lastReveal=new Set()
 const $=id=>document.getElementById(id)
@@ -55,7 +55,10 @@ function kids(id){return M.plan.filter(n=>n.parent===id)}
 function render(){
   $('proj').textContent=M.session.project;$('state').innerHTML='<span class="badge"><span class="dot"></span>Plan is live</span>'
   favicon('#7aa36a');document.title=`agenttrail · ${M.session.project}`
-  renderTree();renderGraph();renderTimes()
+  renderTree()
+  const graphKey=JSON.stringify(M.plan)+'|'+((M.recentActivity[0]||{}).file||'')
+  if(graphKey!==lastGraphKey){lastGraphKey=graphKey;renderGraph()}
+  renderTimes()
 }
 function renderConnectionError(){
   $('state').innerHTML='<span class="badge changed"><span class="dot"></span>Not connected</span>'
