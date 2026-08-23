@@ -274,4 +274,6 @@ tech: scaffolding
   const giText = safeRead(gi)
   if (!giText.includes('.agenttrail')) fs.appendFileSync(gi, (giText.endsWith('\n') || !giText ? '' : '\n') + '.agenttrail/\n')
   console.log('done — start the daemon with: agenttrail ' + repo)
+  console.log('\nnext: have your agent draw the real map. Paste this to Claude Code or Codex in this repo:\n')
+  console.log('  Read the "agenttrail plan convention" section in CLAUDE.md or AGENTS.md. Then study this repo — README, roadmap/design docs, and the directory layout — and rewrite PLAN.md as the real map of this codebase: components with stable {#id}s, needs:/links: edges between them, files: globs for the paths each owns, and verb-led concrete titles with tech: sublines. Statuses must be honest — [x] only for what verifiably exists, [~] only for what you are working on right now, everything else [ ]. Record the backfill under ## decisions.')
 }

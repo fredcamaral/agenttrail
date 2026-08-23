@@ -11,9 +11,11 @@ agenttrail watches your **repo**, not your agent. It renders the plan your agent
 ## quick start
 
 ```
-npx agenttrail init          # scaffolds PLAN.md + appends the convention block to CLAUDE.md
+npx agenttrail init          # scaffolds PLAN.md + writes the convention block to CLAUDE.md and AGENTS.md
 npx agenttrail               # starts the daemon → http://localhost:5330
 ```
+
+Then the one human step: the board shows a **Copy backfill prompt** button while the plan is a skeleton — paste that prompt to Claude Code or Codex in the repo, and the agent rewrites PLAN.md as the real component map. The board fills in live as it writes.
 
 All local. No cloud, no accounts, no hooks required.
 
