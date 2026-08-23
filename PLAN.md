@@ -38,6 +38,19 @@ files: [public/**]
 - [x] Folder tree with live "just touched" accents {#explorer-tree}
   by: claude
 
+## Watch live runs {#runs}
+tech: claude code hooks adapter — PostToolUse/TodoWrite → POST /events
+needs: [plan-reader]
+links: [map]
+files: [bin/**, public/**]
+- [~] Receive hook events and track sessions {#runs-endpoint}
+  by: claude
+  tech: /events endpoint; per-session todos, current tool, recent calls
+- [ ] Hook relay command + settings install {#runs-relay}
+  tech: agenttrail hook (stdin → POST, fail-silent); init merges .claude/settings.json
+- [ ] Run cards on the board with the live tool line {#runs-ui}
+- [ ] Pin runs to components so the map glows where work happens {#runs-pin}
+
 ## Ship to GitHub and npm {#ship}
 needs: [map, explorer]
 files: [README.md, docs/**, package.json]
@@ -53,3 +66,4 @@ files: [README.md, docs/**, package.json]
 - 2026-08-21: graph is hand-rolled svg, not react-flow — keeps the daemon zero-dep and the page build-free
 - 2026-08-23: K. removed the plan-changes mechanism entirely — agenttrail is a live read-only status monitor
 - 2026-08-23: convention v2 — plan nodes are components (needs + links edges), titles are plain verb-led outcomes for the owner with tech: sublines; layout stays deterministic, the authoring agent is the generative part
+- 2026-08-23: run foreground, map as stage — hooks adapter is core (the 30-minute question is the product); file spine stays the fallback for hook-less agents
