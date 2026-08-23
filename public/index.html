@@ -71,7 +71,7 @@ function renderTree(){
       rows.push(`<div class="tree-row file${at?' hot':''}" style="padding-left:${pad+20}px"><span class="tree-name">${esc(n.name)}</span>${at?`<span class="tree-ago"><span class="t-ago" data-at="${at}"></span></span>`:''}</div>`)
     }}}
   walk(M.tree,0)
-  $('tree').innerHTML=`<div class="tree-head">${esc(M.session.project)}</div>${rows.join('')}<div class="tree-legend"><span class="tree-legend-dot"></span>amber = file the agent last touched · time since</div>`
+  $('tree').innerHTML=`<div class="tree-head">${esc(M.session.project)}</div>${rows.join('')}<div class="tree-legend"><span class="tree-legend-dot"></span>most recent edit · time since last write</div>`
 }
 $('tree').addEventListener('click',e=>{const b=e.target.closest('.tree-row.dir');if(!b)return;const p=b.dataset.path
   if(isFolderOpen(p)){openFolders.delete(p);closedFolders.add(p)}else{closedFolders.delete(p);openFolders.add(p)}
