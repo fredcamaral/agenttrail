@@ -18,6 +18,7 @@ let openBrowser = false
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === 'init') cmd = 'init'
+  else if (a === 'hook') cmd = 'hook'
   else if (a === '--port') port = parseInt(argv[++i], 10)
   else if (a === '--open') openBrowser = true
   else repo = path.resolve(a)
@@ -26,6 +27,20 @@ const planPath = path.join(repo, 'PLAN.md')
 const atDir = path.join(repo, '.agenttrail')
 
 if (cmd === 'init') { init(); process.exit(0) }
+if (cmd === 'hook') { await relayHook(); process.exit(0) }
+
+// reads a claude code hook payload on stdin and fans it out to local daemons;
+// each daemon keeps only events whose cwd lives inside its repo. Never blocks
+// the agent: 400ms cap, failures are silent.
+async function relayHook() {
+  let raw = ''
+  try { for await (const c of process.stdin) raw += c } catch {}
+  if (!raw) return
+  const ports = process.env.AGENTTRAIL_PORT ? [parseInt(process.env.AGENTTRAIL_PORT, 10)] : [5330, 5331, 5332, 5333, 5334]
+  await Promise.allSettled(ports.map(p => fetch(`http://127.0.0.1:${p}/hook`, {
+    method: 'POST', body: raw, signal: AbortSignal.timeout(400),
+  }).catch(() => {})))
+}
 
 // ---------- PLAN.md parser (convention v2: components, owner-first names) ----------
 // `## Plain-language name {#id}` = a component of the system, not a phase.
@@ -121,6 +136,60 @@ function touchComponents(file, at) {
   }
 }
 
+// ---------- live runs (claude code hooks adapter) ----------
+// The run is the foreground: what the agent is doing right now — current
+// todo, streaming tool line, recent calls — pinned to a component on the map.
+const runs = {} // session id -> run
+function runFor(id, cwd) {
+  return runs[id] || (runs[id] = { id, agent: 'claude', cwd, startedAt: Date.now(), lastEventAt: Date.now(), todos: [], currentTool: null, recentTools: [], componentId: null, ended: false })
+}
+function toolDetail(input = {}) {
+  const p = input.file_path || input.notebook_path
+  const d = input.command || (p ? (relToRepo(p) ?? p) : '') || input.pattern || input.url || input.query || input.prompt || ''
+  return String(d).replace(/\s+/g, ' ').slice(0, 90)
+}
+function relToRepo(p) {
+  if (!p) return null
+  const r = path.resolve(String(p))
+  return r === repo ? '' : r.startsWith(repo + path.sep) ? r.slice(repo.length + 1) : null
+}
+function handleHookEvent(ev) {
+  const cwd = ev.cwd || ''
+  if (!(cwd === repo || cwd.startsWith(repo + path.sep))) return false
+  const run = runFor(ev.session_id || 'session', cwd)
+  run.lastEventAt = Date.now()
+  const kind = ev.hook_event_name
+  if (kind === 'SessionStart') run.ended = false
+  else if (kind === 'Stop' || kind === 'SessionEnd') { run.ended = true; run.currentTool = null }
+  else if (kind === 'PreToolUse') {
+    run.ended = false
+    run.currentTool = { name: ev.tool_name, detail: toolDetail(ev.tool_input), at: Date.now() }
+  } else if (kind === 'PostToolUse') {
+    run.ended = false
+    const started = run.currentTool && run.currentTool.name === ev.tool_name ? run.currentTool.at : Date.now()
+    run.recentTools.unshift({ name: ev.tool_name, detail: toolDetail(ev.tool_input), at: Date.now(), ms: Date.now() - started })
+    if (run.recentTools.length > 8) run.recentTools.length = 8
+    run.currentTool = null
+    if (ev.tool_name === 'TodoWrite' && ev.tool_input && Array.isArray(ev.tool_input.todos)) {
+      run.todos = ev.tool_input.todos.map(t => ({ content: t.content, status: t.status }))
+    }
+    const rel = relToRepo(ev.tool_input && (ev.tool_input.file_path || ev.tool_input.notebook_path))
+    if (rel) {
+      touchComponents(rel, Date.now())
+      activity = { file: rel, at: Date.now() }
+      for (const m of compMatchers) if (m.res.some(re => re.test(rel))) run.componentId = m.id
+    }
+  } else return false
+  return true
+}
+function liveRuns() {
+  const now = Date.now()
+  for (const [id, r] of Object.entries(runs)) {
+    if (now - r.lastEventAt > 15 * 60e3 || (r.ended && now - r.lastEventAt > 3 * 60e3)) delete runs[id]
+  }
+  return Object.values(runs).sort((a, b) => a.startedAt - b.startedAt)
+}
+
 // ---------- repo tree (vs-code-style explorer, folders first) ----------
 const IGNORE = /(^|\/)(\.git|node_modules|\.agenttrail|dist|build|\.next|__pycache__|\.venv|\.build|\.pytest_cache|\.ruff_cache|\.cache|\.DS_Store)(\/|$)/
 // editor/tool atomic-write droppings — not real activity targets
@@ -164,6 +233,7 @@ function statMtime(p) { try { return fs.statSync(p).mtimeMs } catch { return nul
 function model() {
   if (treeDirty) { tree = buildTree(repo); treeDirty = false }
   return {
+    runs: liveRuns(),
     session, plan: parsed.nodes.map(n => n.level === 'component' ? { ...n, touchedAt: compTouched[n.id] || null, recent: compRecent[n.id] || [] } : n), tree,
     planTitle: parsed.title,
     hasPlan: planText.length > 0, treeTruncated,
@@ -179,7 +249,7 @@ function send(obj) {
 function broadcast() { send(model()) }
 // activity ticks carry only what moved — the 600KB tree stays home
 function broadcastTick() {
-  send({ partial: true, activity, recentActivity, touched: { ...compTouched }, compRecent, now: Date.now() })
+  send({ partial: true, runs: liveRuns(), activity, recentActivity, touched: { ...compTouched }, compRecent, now: Date.now() })
 }
 
 // ---------- watcher ----------
@@ -234,8 +304,20 @@ const server = http.createServer((req, res) => {
     res.write(`data: ${JSON.stringify(model())}\n\n`)
     clients.add(res)
     req.on('close', () => clients.delete(res))
+  } else if (u.pathname === '/hook' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', () => {
+      try { if (handleHookEvent(JSON.parse(body))) hookTick() } catch {}
+      res.writeHead(200).end()
+    })
   } else res.writeHead(404).end()
 })
+let lastHookTick = 0
+function hookTick() {
+  const now = Date.now()
+  if (now - lastHookTick > 300) { lastHookTick = now; broadcastTick() }
+}
 server.listen(port, '127.0.0.1', () => {
   console.log(`agenttrail · ${session.project} · http://localhost:${port}`)
   if (!planText) console.log('no PLAN.md found — run `agenttrail init` in the repo to scaffold one')
@@ -270,10 +352,33 @@ tech: scaffolding
       console.log(`appended agenttrail convention block to ${name}`)
     }
   }
+  installHooks()
   const gi = path.join(repo, '.gitignore')
   const giText = safeRead(gi)
   if (!giText.includes('.agenttrail')) fs.appendFileSync(gi, (giText.endsWith('\n') || !giText ? '' : '\n') + '.agenttrail/\n')
   console.log('done — start the daemon with: agenttrail ' + repo)
   console.log('\nnext: have your agent draw the real map. Paste this to Claude Code or Codex in this repo:\n')
   console.log('  Read the "agenttrail plan convention" section in CLAUDE.md or AGENTS.md. Then study this repo — README, roadmap/design docs, and the directory layout — and rewrite PLAN.md as the real map of this codebase: components with stable {#id}s, needs:/links: edges between them, files: globs for the paths each owns, and verb-led concrete titles with tech: sublines. Keep it to 5-9 components no matter how big the repo — a component is a part one agent could own for a session, with its own doneness and at least one edge; anything smaller is a task inside one. Statuses must be honest — [x] only for what verifiably exists, [~] only for what you are working on right now, everything else [ ]. Record the backfill under ## decisions.')
+}
+
+// merge our hook relay into the repo's .claude/settings.json so Claude Code
+// sessions stream tool calls + todos to the board. Additive and idempotent.
+function installHooks() {
+  const dir = path.join(repo, '.claude')
+  const sp = path.join(dir, 'settings.json')
+  let cfg = {}
+  try { cfg = JSON.parse(fs.readFileSync(sp, 'utf8')) } catch {}
+  const cmd = `node ${JSON.stringify(fileURLToPath(import.meta.url))} hook`
+  cfg.hooks = cfg.hooks || {}
+  let added = 0
+  for (const ev of ['PreToolUse', 'PostToolUse', 'Stop', 'SessionStart']) {
+    const list = cfg.hooks[ev] = cfg.hooks[ev] || []
+    const present = JSON.stringify(list).includes('agenttrail')
+    if (!present) { list.push({ matcher: '*', hooks: [{ type: 'command', command: cmd }] }); added++ }
+  }
+  if (added) {
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(sp, JSON.stringify(cfg, null, 2) + '\n')
+    console.log(`wired ${added} claude code hooks into .claude/settings.json (live tool + todo stream)`)
+  }
 }

@@ -43,13 +43,16 @@ tech: claude code hooks adapter — PostToolUse/TodoWrite → POST /events
 needs: [plan-reader]
 links: [map]
 files: [bin/**, public/**]
-- [~] Receive hook events and track sessions {#runs-endpoint}
+- [x] Receive hook events and track sessions {#runs-endpoint}
   by: claude
   tech: /events endpoint; per-session todos, current tool, recent calls
-- [ ] Hook relay command + settings install {#runs-relay}
+- [x] Hook relay command + settings install {#runs-relay}
+  by: claude
   tech: agenttrail hook (stdin → POST, fail-silent); init merges .claude/settings.json
-- [ ] Run cards on the board with the live tool line {#runs-ui}
-- [ ] Pin runs to components so the map glows where work happens {#runs-pin}
+- [x] Run cards on the board with the live tool line {#runs-ui}
+  by: claude
+- [x] Pin runs to components so the map glows where work happens {#runs-pin}
+  by: claude
 
 ## Ship to GitHub and npm {#ship}
 needs: [map, explorer]

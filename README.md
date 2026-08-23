@@ -49,6 +49,10 @@ links: [notify]
 
 `agenttrail init` writes the instruction block into both CLAUDE.md (Claude Code) and AGENTS.md (Codex, Cursor, and friends) — including the naming rule, so plans are written for the person supervising, not the agent doing. The monitor itself is agent-blind: it watches files, so anything that edits the repo shows up.
 
+## live runs (Claude Code)
+
+`init` also wires Claude Code hooks into the repo's `.claude/settings.json`. From then on every Claude session in that repo streams to the board: a **run card** per session — agent mark, elapsed time, the todo it's working on now, and the live tool line (`Bash · pnpm test · 41s`) — click to unfold the full todo list and recent tool calls. Runs pin to the component whose files they're editing, so the map glows where the 30-minute session actually is. Agents without hooks (Codex, anything else) still show through the file-activity layer.
+
 ## what you see
 
 - phases and tasks with live status; the in-progress task carries a live "editing src/… · 4s ago" line from the fs watcher
