@@ -63,7 +63,7 @@ files: [README.md, docs/**, package.json]
 - [x] Fresh demo gif of the current look {#ship-gif}
   by: claude
 - [ ] Publish to npm {#ship-npm}
-  horizon: now
+  from: agent
 
 ## decisions
 - 2026-08-21: spine is the codebase (fs watcher + PLAN.md), not agent hooks; hooks become an optional fidelity adapter
