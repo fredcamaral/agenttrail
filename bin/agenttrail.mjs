@@ -100,6 +100,7 @@ const clients = new Set()
 // filesystem shows. A component whose files are being written is live no
 // matter what its checkbox says — that is how "revising done work" stays visible.
 const compTouched = {} // component id -> last matching write ts
+const compRecent = {} // component id -> [{file, at}] newest first — feeds capsule work lines
 function globToRe(g) {
   if (!/[*?]/.test(g)) return new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&') + '(/|$)')
   const esc = g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*')
@@ -111,7 +112,13 @@ function rebuildMatchers() {
     .map(c => ({ id: c.id, res: c.files.map(globToRe) }))
 }
 function touchComponents(file, at) {
-  for (const m of compMatchers) if (m.res.some(re => re.test(file))) compTouched[m.id] = at
+  for (const m of compMatchers) if (m.res.some(re => re.test(file))) {
+    compTouched[m.id] = at
+    const arr = compRecent[m.id] || (compRecent[m.id] = [])
+    if (arr[0] && arr[0].file === file) arr[0] = { file, at }
+    else arr.unshift({ file, at })
+    if (arr.length > 6) arr.length = 6
+  }
 }
 
 // ---------- repo tree (vs-code-style explorer, folders first) ----------
@@ -157,7 +164,7 @@ function statMtime(p) { try { return fs.statSync(p).mtimeMs } catch { return nul
 function model() {
   if (treeDirty) { tree = buildTree(repo); treeDirty = false }
   return {
-    session, plan: parsed.nodes.map(n => n.level === 'component' ? { ...n, touchedAt: compTouched[n.id] || null } : n), tree,
+    session, plan: parsed.nodes.map(n => n.level === 'component' ? { ...n, touchedAt: compTouched[n.id] || null, recent: compRecent[n.id] || [] } : n), tree,
     planTitle: parsed.title,
     hasPlan: planText.length > 0, treeTruncated,
     activity, recentActivity, planMtime,
@@ -172,7 +179,7 @@ function send(obj) {
 function broadcast() { send(model()) }
 // activity ticks carry only what moved — the 600KB tree stays home
 function broadcastTick() {
-  send({ partial: true, activity, recentActivity, touched: { ...compTouched }, now: Date.now() })
+  send({ partial: true, activity, recentActivity, touched: { ...compTouched }, compRecent, now: Date.now() })
 }
 
 // ---------- watcher ----------
