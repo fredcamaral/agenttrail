@@ -1,12 +1,12 @@
 # agenttrail
 
-A live map of what your coding agents are doing. Plan, position, and drift, watched in real time.
+A live map of what your coding agents are doing. Plan and position, watched in real time.
 
-agenttrail watches your **repo**, not your agent. It renders the plan your agent maintains in `PLAN.md` as a live view: what's done, what's in progress right now, and — the part nothing else does — **what changed in the plan since you last looked**. Works with Claude Code, Codex, or any agent that can follow a file convention.
+agenttrail watches your **repo**, not your agent. It renders the plan your agent maintains in `PLAN.md` as a live view: what's done, what's in progress right now, and what the agent is touching in the repo this second. Works with Claude Code, Codex, or any agent that can follow a file convention.
 
 > agentmap helps your agent see your code. agenttrail helps you see your agent.
 
-![agenttrail watching a live session: tasks progressing and a plan revision appearing in the read-only change history](docs/demo.gif)
+![agenttrail watching a live session: phases and tasks updating as the agent works](docs/demo.gif)
 
 ## quick start
 
@@ -44,12 +44,10 @@ needs: [p1]
 ## what you see
 
 - phases and tasks with live status; the in-progress task carries a live "editing src/… · 4s ago" line from the fs watcher
-- **status flips are progress, not drift** — checking off a task never demands your attention
-- title changes, added or removed nodes, and new decisions turn **amber** in the change history: **accept** clears them from every view, **ask why** copies a formed question to paste to your agent
-- click any flow node to show a tethered PLAN.md card beneath it while keeping the original node and graph visible; multiple cards can stay open
-- header reads "plan is steady" when no structural changes are detected
+- a pan/zoom flow diagram of the phases along their `needs:` edges; click a node to unfold its tasks as capsules with per-task detail
+- an inspector panel with phase progress, dependencies, and the latest repository activity
 
-Review state lives in `.agenttrail/` (baseline snapshot + `reviews.jsonl`) — the interface never modifies PLAN.md itself, and accepted changes stay cleared across restarts.
+The monitor is read-only — it never modifies PLAN.md or anything else in your repo.
 
 ## architecture
 

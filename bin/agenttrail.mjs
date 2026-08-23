@@ -24,8 +24,6 @@ for (let i = 0; i < argv.length; i++) {
 }
 const planPath = path.join(repo, 'PLAN.md')
 const atDir = path.join(repo, '.agenttrail')
-const baselinePath = path.join(atDir, 'baseline.json')
-const reviewsPath = path.join(atDir, 'reviews.jsonl')
 
 if (cmd === 'init') { init(); process.exit(0) }
 
@@ -74,75 +72,21 @@ function parsePlan(text) {
   return { nodes, decisions, title }
 }
 
-// ---------- baseline / drift ----------
-// Drift = structure and intent changes ONLY (title, needs, add/remove, decisions).
-// Status flips ([ ] -> [x]) are progress, never drift.
-function snapshotOf(parsed) {
-  const nodes = {}
-  for (const n of parsed.nodes) nodes[n.id] = { title: n.title, needs: n.needs, parent: n.parent, level: n.level }
-  return { nodes, decisions: [...parsed.decisions] }
-}
-
-function loadBaseline(parsed) {
-  try { return JSON.parse(fs.readFileSync(baselinePath, 'utf8')) } catch {
-    const snap = snapshotOf(parsed)
-    saveBaseline(snap)
-    return snap
-  }
-}
-function saveBaseline(snap) {
-  fs.mkdirSync(atDir, { recursive: true })
-  fs.writeFileSync(baselinePath, JSON.stringify(snap, null, 2))
-}
-
-function repr(n) {
-  return `${n.title}${n.needs && n.needs.length ? `  needs: [${n.needs.join(', ')}]` : ''}`
-}
-
-function computeDrift(parsed, base) {
-  const diffs = {} // id -> DiffEntry
-  const removed = [] // nodes gone from plan
-  for (const n of parsed.nodes) {
-    const b = base.nodes[n.id]
-    if (!b) diffs[n.id] = { kind: 'added', removed: [], added: [repr(n)] }
-    else if (b.title !== n.title || JSON.stringify(b.needs) !== JSON.stringify(n.needs)) {
-      diffs[n.id] = { kind: 'changed', removed: [repr(b)], added: [repr(n)] }
-    }
-  }
-  for (const [id, b] of Object.entries(base.nodes)) {
-    if (!parsed.nodes.some(n => n.id === id)) removed.push({ id, title: b.title, level: b.level, parent: b.parent })
-  }
-  const newDecisions = parsed.decisions.filter(d => !base.decisions.includes(d))
-  return { diffs, removed, newDecisions }
-}
-
 // ---------- live state ----------
 const session = { id: Math.random().toString(36).slice(2, 10), project: path.basename(repo), startedAt: new Date().toISOString() }
 let planText = safeRead(planPath)
 let parsed = parsePlan(planText)
-const baseline = loadBaseline(parsed) // last-reviewed plan state, persisted in .agenttrail/baseline.json
 let activity = null // { file, at } — most recent non-plan repo write
 let recentActivity = [] // last N writes, newest first — feeds the live-view drill-down
 let planMtime = statMtime(planPath)
-const driftSeen = new Map() // drift key -> first-seen ts, so the feed can say "N min ago"
 const clients = new Set()
 
 function safeRead(p) { try { return fs.readFileSync(p, 'utf8') } catch { return '' } }
 function statMtime(p) { try { return fs.statSync(p).mtimeMs } catch { return null } }
 
 function model() {
-  const { diffs, removed, newDecisions } = computeDrift(parsed, baseline)
-  const keys = new Set([
-    ...Object.keys(diffs),
-    ...removed.map(r => 'rm:' + r.id),
-    ...newDecisions.map(d => 'dec:' + d),
-  ])
-  for (const k of keys) if (!driftSeen.has(k)) driftSeen.set(k, Date.now())
-  for (const k of [...driftSeen.keys()]) if (!keys.has(k)) driftSeen.delete(k)
-  const driftAt = driftSeen.size ? Math.max(...driftSeen.values()) : null
-  const plan = parsed.nodes.map(n => ({ ...n, diff: diffs[n.id] || null }))
   return {
-    session, plan, removed, newDecisions, driftAt,
+    session, plan: parsed.nodes,
     planTitle: parsed.title,
     hasPlan: planText.length > 0,
     activity, recentActivity, planMtime,
@@ -191,25 +135,6 @@ function throttleBroadcast() {
   if (now - lastActivityPush > 1000) { lastActivityPush = now; broadcast() }
 }
 
-// ---------- accept / reviews ----------
-// Accepting a change moves the baseline forward for that node (or the
-// decisions list) and logs the review — this is what clears amber everywhere.
-function accept(body) {
-  const { kind, id } = body
-  if (kind === 'node' && id) {
-    const n = parsed.nodes.find(x => x.id === id)
-    if (n) baseline.nodes[id] = { title: n.title, needs: n.needs, parent: n.parent, level: n.level }
-  } else if (kind === 'removed' && id) {
-    delete baseline.nodes[id]
-  } else if (kind === 'decisions') {
-    baseline.decisions = [...parsed.decisions]
-  } else return false
-  saveBaseline(baseline)
-  fs.appendFileSync(reviewsPath, JSON.stringify({ ...body, at: new Date().toISOString() }) + '\n')
-  broadcast()
-  return true
-}
-
 // ---------- http ----------
 const indexPath = path.join(__dirname, '..', 'public', 'index.html')
 const server = http.createServer((req, res) => {
@@ -223,14 +148,6 @@ const server = http.createServer((req, res) => {
     res.write(`data: ${JSON.stringify(model())}\n\n`)
     clients.add(res)
     req.on('close', () => clients.delete(res))
-  } else if (u.pathname === '/accept' && req.method === 'POST') {
-    let body = ''
-    req.on('data', c => body += c)
-    req.on('end', () => {
-      let ok = false
-      try { ok = accept(JSON.parse(body)) } catch {}
-      res.writeHead(ok ? 200 : 400).end()
-    })
   } else res.writeHead(404).end()
 })
 server.listen(port, '127.0.0.1', () => {

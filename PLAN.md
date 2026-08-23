@@ -25,3 +25,4 @@ needs: [v05]
 - 2026-08-21: graph is hand-rolled svg, not react-flow — keeps the daemon zero-dep and the page build-free; revisit if graphs outgrow ~50 nodes
 - 2026-08-21: flow nodes remain visible while tethered PLAN.md cards open beneath them; multiple cards can coexist
 - 2026-08-21: adopted the codex ui redesign wholesale but kept the review loop — the monitor never edits PLAN.md, yet accept/ask-why stay first-class (baseline in .agenttrail/, not the plan file)
+- 2026-08-23: K. removed the plan-changes mechanism entirely (drift detection, change history, accept/ask-why, baseline) — agenttrail is a live read-only status monitor; the codex restyles that stripped it were intentional

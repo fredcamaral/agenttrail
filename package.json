@@ -1,7 +1,7 @@
 {
   "name": "agenttrail",
   "version": "0.0.1",
-  "description": "A live map of what your coding agents are doing. Plan, position, and drift, watched in real time.",
+  "description": "A live map of what your coding agents are doing. Plan and position, watched in real time.",
   "type": "module",
   "bin": { "agenttrail": "./bin/agenttrail.mjs" },
   "engines": { "node": ">=20" },
