@@ -6,7 +6,7 @@ agenttrail watches your **repo**, not your agent. It renders the plan your agent
 
 > agentmap helps your agent see your code. agenttrail helps you see your agent.
 
-![agenttrail watching a live session: phases and tasks updating as the agent works](docs/demo.gif)
+![agenttrail watching a live session: components lighting up as agents work — claude finishes a task, codex takes the next, hits a block, recovers](docs/demo.gif)
 
 ## quick start
 
