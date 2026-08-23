@@ -22,7 +22,7 @@ files: [bin/**]
 tech: svg flow diagram + task capsules
 needs: [plan-reader]
 links: [explorer]
-files: [public/**]
+files: [public/**, assets/brand/**]
 - [x] Show components and how they connect {#map-graph}
   tech: needs = arrows, links = dashed, deterministic layout
   by: claude
@@ -30,6 +30,8 @@ files: [public/**]
   by: codex
 - [x] Name things for the owner, not the agent {#map-naming}
   tech: convention v2 — verb-led titles + tech: sublines
+- [x] Put the selected logo in the header {#map-logo}
+  by: codex
 
 ## Show the repo like an editor {#explorer}
 tech: vs-code-style file tree

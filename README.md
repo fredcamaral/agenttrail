@@ -42,6 +42,7 @@ links: [notify]
 - nodes are **components** of the system (`## Plain-language name {#id}`), not phases — titles are verb-led outcomes the owner understands; the engineer phrasing lives on a `tech:` line and shows on drill-down
 - every component and task carries a **stable `{#id}`** — never renamed, only added or removed
 - `- [~]` marks the task in progress, `- [x]` done, `- [!]` stuck/failing — cards carry a status circle: green tick complete, amber spinner in progress, red `!` blocked
+- open tasks may carry `horizon: now` (pink **Up now** pill — the imminent frontier, sourced from live build docs; correct it immediately if wrong) or `horizon: backlog` (muted pill — roadmap intent, not in motion)
 - an indented `by: <agent>` line under a task records who took it (claude, codex, …) — shown as a colored chip on the task and rolled up as agent dots on the component card; it stays after completion as the record of who built what
 - `needs: [id]` = must come after those components (drawn as arrows); `links: [id]` = interconnected with (drawn as dashed ties)
 - `files: [src/audio/**]` declares which paths a component owns — this powers the **observed-activity ring**: whenever a component's files are being written, an amber ring spins around its status circle no matter what the checkbox says (Revising on a done component, Retrying on a blocked one, Editing otherwise). Declared status and observed activity are independent layers, so revisiting finished work is never invisible
