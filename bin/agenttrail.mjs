@@ -15,18 +15,20 @@ let cmd = null
 let repo = process.cwd()
 let port = 5330
 let openBrowser = false
+let hooksOnly = false
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === 'init') cmd = 'init'
   else if (a === 'hook') cmd = 'hook'
   else if (a === '--port') port = parseInt(argv[++i], 10)
   else if (a === '--open') openBrowser = true
+  else if (a === '--hooks-only') hooksOnly = true
   else repo = path.resolve(a)
 }
 const planPath = path.join(repo, 'PLAN.md')
 const atDir = path.join(repo, '.agenttrail')
 
-if (cmd === 'init') { init(); process.exit(0) }
+if (cmd === 'init') { hooksOnly ? installHooks() : init(); process.exit(0) }
 if (cmd === 'hook') { await relayHook(); process.exit(0) }
 
 // reads a claude code hook payload on stdin and fans it out to local daemons;
