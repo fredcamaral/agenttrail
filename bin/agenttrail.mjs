@@ -6,6 +6,8 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import os from 'node:os'
+import crypto from 'node:crypto'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -160,6 +162,7 @@ function handleHookEvent(ev) {
   if (!(cwd === repo || cwd.startsWith(repo + path.sep))) return false
   const run = runFor(ev.session_id || 'session', cwd)
   run.lastEventAt = Date.now()
+  stateDirty = true
   const kind = ev.hook_event_name
   if (kind === 'SessionStart') run.ended = false
   else if (kind === 'Stop' || kind === 'SessionEnd') { run.ended = true; run.currentTool = null }
@@ -191,6 +194,31 @@ function liveRuns() {
   }
   return Object.values(runs).sort((a, b) => a.startedAt - b.startedAt)
 }
+
+// ---------- observed-state persistence (survives daemon restarts) ----------
+// Lives under ~/.agenttrail keyed by repo path — never touches the repo itself.
+const stateFile = path.join(os.homedir(), '.agenttrail', crypto.createHash('sha1').update(repo).digest('hex').slice(0, 12) + '.json')
+let stateDirty = false
+function loadState() {
+  try {
+    const st = JSON.parse(fs.readFileSync(stateFile, 'utf8'))
+    activity = st.activity || null
+    recentActivity = st.recentActivity || []
+    Object.assign(compTouched, st.compTouched || {})
+    Object.assign(compRecent, st.compRecent || {})
+  } catch {}
+}
+function saveState() {
+  if (!stateDirty) return
+  stateDirty = false
+  try {
+    fs.mkdirSync(path.dirname(stateFile), { recursive: true })
+    fs.writeFileSync(stateFile, JSON.stringify({ activity, recentActivity, compTouched, compRecent }))
+  } catch {}
+}
+loadState()
+setInterval(saveState, 15000).unref()
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stateDirty = true; saveState(); process.exit(0) })
 
 // ---------- repo tree (vs-code-style explorer, folders first) ----------
 const IGNORE = /(^|\/)(\.git|node_modules|\.agenttrail|dist|build|\.next|__pycache__|\.venv|\.build|\.pytest_cache|\.ruff_cache|\.cache|\.DS_Store)(\/|$)/
@@ -275,6 +303,7 @@ try {
     }
     // plain repo churn → liveness signal
     treeDirty = true
+    stateDirty = true
     activity = { file: f, at: Date.now() }
     touchComponents(f, activity.at)
     if (!recentActivity.length || recentActivity[0].file !== f) recentActivity.unshift(activity)
