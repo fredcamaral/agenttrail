@@ -3,6 +3,7 @@
 ## Understand the plan {#plan-reader}
 tech: PLAN.md parser + derived model
 - [x] Read the plan file into a live model {#plan-parse}
+  by: claude
   tech: stable {#id}s, needs/links edges, [~] active marker
 - [x] Re-read it the moment the agent edits it {#plan-watch}
   tech: fs watcher + 150ms debounce
@@ -11,6 +12,7 @@ tech: PLAN.md parser + derived model
 tech: recursive fs watcher
 links: [explorer]
 - [x] Notice every file the agent touches {#watch-files}
+  by: claude
 - [x] Ignore editor droppings and junk folders {#watch-filter}
   tech: tmp/swap filter + .git, node_modules excludes
 
@@ -20,7 +22,9 @@ needs: [plan-reader]
 links: [explorer]
 - [x] Show components and how they connect {#map-graph}
   tech: needs = arrows, links = dashed, deterministic layout
+  by: claude
 - [x] Unfold a component into its tasks {#map-capsules}
+  by: codex
 - [x] Name things for the owner, not the agent {#map-naming}
   tech: convention v2 — verb-led titles + tech: sublines
 
@@ -28,6 +32,7 @@ links: [explorer]
 tech: vs-code-style file tree
 needs: [watcher]
 - [x] Folder tree with live "just touched" accents {#explorer-tree}
+  by: claude
 
 ## Put it in people's hands {#ship}
 needs: [map, explorer]

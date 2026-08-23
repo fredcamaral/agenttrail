@@ -36,6 +36,7 @@ const TASK_RE = /^\s*[-*]\s+\[( |x|~|!)\]\s+(.+?)\s*\{#([a-z0-9][a-z0-9-]*)\}\s*
 const NEEDS_RE = /^needs:\s*\[([^\]]*)\]\s*$/i
 const LINKS_RE = /^links:\s*\[([^\]]*)\]\s*$/i
 const TECH_RE = /^\s*tech:\s*(.+?)\s*$/i
+const BY_RE = /^\s*by:\s*(.+?)\s*$/i
 const DECISIONS_RE = /^##\s+decisions\s*$/i
 const idList = s => s.split(',').map(x => x.trim()).filter(Boolean)
 
@@ -53,7 +54,7 @@ function parsePlan(text) {
     let m
     if ((m = line.match(NODE_RE))) {
       inDecisions = false
-      curComponent = { id: m[2], title: m[1], level: 'component', parent: null, needs: [], links: [], tech: '', status: 'pending' }
+      curComponent = { id: m[2], title: m[1], level: 'component', parent: null, needs: [], links: [], tech: '', by: '', status: 'pending' }
       lastNode = curComponent
       nodes.push(curComponent)
       continue
@@ -64,11 +65,12 @@ function parsePlan(text) {
     }
     if ((m = line.match(TASK_RE))) {
       const status = m[1] === 'x' ? 'done' : m[1] === '~' ? 'active' : m[1] === '!' ? 'blocked' : 'pending'
-      lastNode = { id: m[3], title: m[2], level: 'task', parent: curComponent ? curComponent.id : null, needs: [], links: [], tech: '', status }
+      lastNode = { id: m[3], title: m[2], level: 'task', parent: curComponent ? curComponent.id : null, needs: [], links: [], tech: '', by: '', status }
       nodes.push(lastNode)
       continue
     }
     if ((m = line.match(TECH_RE))) { if (lastNode) lastNode.tech = m[1]; continue }
+    if ((m = line.match(BY_RE))) { if (lastNode) lastNode.by = m[1]; continue }
     if ((m = line.match(NEEDS_RE))) { if (curComponent) curComponent.needs = idList(m[1]); continue }
     if ((m = line.match(LINKS_RE))) { if (curComponent) curComponent.links = idList(m[1]); continue }
   }
@@ -206,7 +208,7 @@ tech: scaffolding
     console.log('wrote PLAN.md skeleton')
   }
   const marker = '<!-- agenttrail -->'
-  const snippet = `\n${marker}\n## agenttrail plan convention\nMaintain PLAN.md as the living plan. It is read by the project OWNER, not by you — write it for them.\n- nodes are COMPONENTS of the system being built (\`## Plain-language name {#id}\`), not phases or sprints\n- naming rule: titles are verb-led, plain-language outcomes a non-engineer understands ("Watch the repo", "Draw the live map" — never "fs watcher + activity signal"); put the engineer phrasing on a \`tech:\` line under the heading\n- tasks inside a component: \`- [ ] Plain outcome {#id}\`, optional indented \`tech:\` line beneath; mark the one you are working on \`[~]\`, completed \`[x]\`, stuck/failing \`[!]\` (clear \`[!]\` once unblocked)\n- edges under a component heading: \`needs: [id, id]\` = must come after those components; \`links: [id, id]\` = interconnected with / talks to\n- \`{#id}\`s are stable — never rename, only add or remove nodes\n- record any plan-affecting decision under \`## decisions\` BEFORE implementing it\n`
+  const snippet = `\n${marker}\n## agenttrail plan convention\nMaintain PLAN.md as the living plan. It is read by the project OWNER, not by you — write it for them.\n- nodes are COMPONENTS of the system being built (\`## Plain-language name {#id}\`), not phases or sprints\n- naming rule: titles are verb-led, plain-language outcomes a non-engineer understands ("Watch the repo", "Draw the live map" — never "fs watcher + activity signal"); put the engineer phrasing on a \`tech:\` line under the heading\n- tasks inside a component: \`- [ ] Plain outcome {#id}\`, optional indented \`tech:\` line beneath; mark the one you are working on \`[~]\`, completed \`[x]\`, stuck/failing \`[!]\` (clear \`[!]\` once unblocked)\n- when you mark a task \`[~]\`, add an indented \`by: <your name>\` line under it (claude, codex, cursor, …) and leave it there when done — it is the record of who did what\n- edges under a component heading: \`needs: [id, id]\` = must come after those components; \`links: [id, id]\` = interconnected with / talks to\n- \`{#id}\`s are stable — never rename, only add or remove nodes\n- record any plan-affecting decision under \`## decisions\` BEFORE implementing it\n`
   // CLAUDE.md is read by Claude Code, AGENTS.md by Codex/Cursor and friends —
   // the convention block goes in both so any agent maintains the same plan.
   for (const name of ['CLAUDE.md', 'AGENTS.md']) {
