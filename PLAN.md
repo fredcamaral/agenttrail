@@ -1,6 +1,6 @@
 # agenttrail
 
-## Understand the plan {#plan-reader}
+## Read the plan file {#plan-reader}
 tech: PLAN.md parser + derived model
 - [x] Read the plan file into a live model {#plan-parse}
   by: claude
@@ -34,7 +34,7 @@ needs: [watcher]
 - [x] Folder tree with live "just touched" accents {#explorer-tree}
   by: claude
 
-## Put it in people's hands {#ship}
+## Ship to GitHub and npm {#ship}
 needs: [map, explorer]
 - [x] Public repo and readme {#ship-repo}
 - [x] Fresh demo gif of the current look {#ship-gif}
