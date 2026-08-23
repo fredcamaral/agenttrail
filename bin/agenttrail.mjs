@@ -115,27 +115,40 @@ function touchComponents(file, at) {
 }
 
 // ---------- repo tree (vs-code-style explorer, folders first) ----------
-const IGNORE = /(^|\/)(\.git|node_modules|\.agenttrail|dist|build|\.next|__pycache__|\.venv)(\/|$)/
+const IGNORE = /(^|\/)(\.git|node_modules|\.agenttrail|dist|build|\.next|__pycache__|\.venv|\.build|\.pytest_cache|\.ruff_cache|\.cache|\.DS_Store)(\/|$)/
 // editor/tool atomic-write droppings — not real activity targets
 const TMP_FILE = /(\.tmp(\.|$)|~$|\.swp$|\.swx$|(^|\/)\.#|(^|\/)#.+#$|\.DS_Store$)/
 
-function buildTree(dir, rel = '', depth = 0, budget = { n: 4000 }) {
-  if (depth > 8 || budget.n <= 0) return []
-  let entries = []
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return [] }
-  const out = []
-  for (const e of entries) {
-    if (budget.n-- <= 0) break
-    const r = rel ? rel + '/' + e.name : e.name
-    if (IGNORE.test(r) || TMP_FILE.test(r)) continue
-    if (e.isDirectory()) out.push({ name: e.name, path: r, dir: true, children: buildTree(path.join(dir, e.name), r, depth + 1, budget) })
-    else if (e.isFile()) out.push({ name: e.name, path: r, dir: false })
+function buildTree(rootDir, budgetN = 4000, perDir = 250) {
+  treeTruncated = false
+  const root = []
+  const queue = [{ dir: rootDir, rel: '', depth: 0, out: root }]
+  let budget = budgetN
+  while (queue.length) {
+    const { dir, rel, depth, out } = queue.shift()
+    if (depth > 8) continue
+    let entries = []
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { continue }
+    let taken = 0
+    for (const e of entries) {
+      const r = rel ? rel + '/' + e.name : e.name
+      if (IGNORE.test(r) || TMP_FILE.test(r)) continue
+      if (taken >= perDir || budget <= 0) { treeTruncated = true; break }
+      taken++; budget--
+      if (e.isDirectory()) {
+        const node = { name: e.name, path: r, dir: true, children: [] }
+        out.push(node)
+        queue.push({ dir: path.join(dir, e.name), rel: r, depth: depth + 1, out: node.children })
+      } else if (e.isFile()) out.push({ name: e.name, path: r, dir: false })
+    }
+    out.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name))
   }
-  out.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name))
-  return out
+  return root
 }
+let treeTruncated = false
 let tree = buildTree(repo)
 let treeDirty = false
+let lastTreeSent = Date.now()
 rebuildMatchers()
 
 function safeRead(p) { try { return fs.readFileSync(p, 'utf8') } catch { return '' } }
@@ -146,15 +159,20 @@ function model() {
   return {
     session, plan: parsed.nodes.map(n => n.level === 'component' ? { ...n, touchedAt: compTouched[n.id] || null } : n), tree,
     planTitle: parsed.title,
-    hasPlan: planText.length > 0,
+    hasPlan: planText.length > 0, treeTruncated,
     activity, recentActivity, planMtime,
     now: Date.now(),
   }
 }
 
-function broadcast() {
-  const data = `data: ${JSON.stringify(model())}\n\n`
+function send(obj) {
+  const data = `data: ${JSON.stringify(obj)}\n\n`
   for (const res of clients) res.write(data)
+}
+function broadcast() { send(model()) }
+// activity ticks carry only what moved — the 600KB tree stays home
+function broadcastTick() {
+  send({ partial: true, activity, recentActivity, touched: { ...compTouched }, now: Date.now() })
 }
 
 // ---------- watcher ----------
@@ -190,7 +208,10 @@ try {
 let lastActivityPush = 0
 function throttleBroadcast() {
   const now = Date.now()
-  if (now - lastActivityPush > 1000) { lastActivityPush = now; broadcast() }
+  if (now - lastActivityPush <= 1000) return
+  lastActivityPush = now
+  if (treeDirty && now - lastTreeSent > 10000) { lastTreeSent = now; broadcast() } // tree refresh, at most every 10s
+  else broadcastTick()
 }
 
 // ---------- http ----------
