@@ -39,7 +39,7 @@ links: [notify]
 
 - nodes are **components** of the system (`## Plain-language name {#id}`), not phases — titles are verb-led outcomes the owner understands; the engineer phrasing lives on a `tech:` line and shows on drill-down
 - every component and task carries a **stable `{#id}`** — never renamed, only added or removed
-- `- [~]` marks the task in progress, `- [x]` done
+- `- [~]` marks the task in progress, `- [x]` done, `- [!]` stuck/failing — cards carry a status circle: green tick complete, amber spinner in progress, red `!` blocked
 - `needs: [id]` = must come after those components (drawn as arrows); `links: [id]` = interconnected with (drawn as dashed ties)
 - plan-affecting decisions are recorded under `## decisions` **before** implementing them
 

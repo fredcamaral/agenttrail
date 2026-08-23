@@ -32,7 +32,7 @@ if (cmd === 'init') { init(); process.exit(0) }
 // `tech:` under a component or task carries the engineer phrasing.
 // `needs: [id]` = directed sequencing edge; `links: [id]` = undirected coupling.
 const NODE_RE = /^##\s+(.+?)\s*\{#([a-z0-9][a-z0-9-]*)\}\s*$/i
-const TASK_RE = /^\s*[-*]\s+\[( |x|~)\]\s+(.+?)\s*\{#([a-z0-9][a-z0-9-]*)\}\s*$/i
+const TASK_RE = /^\s*[-*]\s+\[( |x|~|!)\]\s+(.+?)\s*\{#([a-z0-9][a-z0-9-]*)\}\s*$/i
 const NEEDS_RE = /^needs:\s*\[([^\]]*)\]\s*$/i
 const LINKS_RE = /^links:\s*\[([^\]]*)\]\s*$/i
 const TECH_RE = /^\s*tech:\s*(.+?)\s*$/i
@@ -63,7 +63,7 @@ function parsePlan(text) {
       continue
     }
     if ((m = line.match(TASK_RE))) {
-      const status = m[1] === 'x' ? 'done' : m[1] === '~' ? 'active' : 'pending'
+      const status = m[1] === 'x' ? 'done' : m[1] === '~' ? 'active' : m[1] === '!' ? 'blocked' : 'pending'
       lastNode = { id: m[3], title: m[2], level: 'task', parent: curComponent ? curComponent.id : null, needs: [], links: [], tech: '', status }
       nodes.push(lastNode)
       continue
@@ -72,10 +72,11 @@ function parsePlan(text) {
     if ((m = line.match(NEEDS_RE))) { if (curComponent) curComponent.needs = idList(m[1]); continue }
     if ((m = line.match(LINKS_RE))) { if (curComponent) curComponent.links = idList(m[1]); continue }
   }
-  // derive component status from its tasks
+  // derive component status from its tasks — blocked wins (it demands attention)
   for (const c of nodes.filter(n => n.level === 'component')) {
     const kids = nodes.filter(n => n.parent === c.id)
-    if (kids.some(k => k.status === 'active')) c.status = 'active'
+    if (kids.some(k => k.status === 'blocked')) c.status = 'blocked'
+    else if (kids.some(k => k.status === 'active')) c.status = 'active'
     else if (kids.length && kids.every(k => k.status === 'done')) c.status = 'done'
   }
   return { nodes, decisions, title }
@@ -206,7 +207,7 @@ tech: scaffolding
   }
   const claudeMd = path.join(repo, 'CLAUDE.md')
   const marker = '<!-- agenttrail -->'
-  const snippet = `\n${marker}\n## agenttrail plan convention\nMaintain PLAN.md as the living plan. It is read by the project OWNER, not by you — write it for them.\n- nodes are COMPONENTS of the system being built (\`## Plain-language name {#id}\`), not phases or sprints\n- naming rule: titles are verb-led, plain-language outcomes a non-engineer understands ("Watch the repo", "Draw the live map" — never "fs watcher + activity signal"); put the engineer phrasing on a \`tech:\` line under the heading\n- tasks inside a component: \`- [ ] Plain outcome {#id}\`, optional indented \`tech:\` line beneath; mark the one you are working on \`[~]\`, completed \`[x]\`\n- edges under a component heading: \`needs: [id, id]\` = must come after those components; \`links: [id, id]\` = interconnected with / talks to\n- \`{#id}\`s are stable — never rename, only add or remove nodes\n- record any plan-affecting decision under \`## decisions\` BEFORE implementing it\n`
+  const snippet = `\n${marker}\n## agenttrail plan convention\nMaintain PLAN.md as the living plan. It is read by the project OWNER, not by you — write it for them.\n- nodes are COMPONENTS of the system being built (\`## Plain-language name {#id}\`), not phases or sprints\n- naming rule: titles are verb-led, plain-language outcomes a non-engineer understands ("Watch the repo", "Draw the live map" — never "fs watcher + activity signal"); put the engineer phrasing on a \`tech:\` line under the heading\n- tasks inside a component: \`- [ ] Plain outcome {#id}\`, optional indented \`tech:\` line beneath; mark the one you are working on \`[~]\`, completed \`[x]\`, stuck/failing \`[!]\` (clear \`[!]\` once unblocked)\n- edges under a component heading: \`needs: [id, id]\` = must come after those components; \`links: [id, id]\` = interconnected with / talks to\n- \`{#id}\`s are stable — never rename, only add or remove nodes\n- record any plan-affecting decision under \`## decisions\` BEFORE implementing it\n`
   const existing = safeRead(claudeMd)
   if (!existing.includes(marker)) {
     fs.appendFileSync(claudeMd, snippet)
