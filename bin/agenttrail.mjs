@@ -81,12 +81,36 @@ let recentActivity = [] // last N writes, newest first — feeds the live-view d
 let planMtime = statMtime(planPath)
 const clients = new Set()
 
+// ---------- repo tree (vs-code-style explorer, folders first) ----------
+const IGNORE = /(^|\/)(\.git|node_modules|\.agenttrail|dist|build|\.next|__pycache__|\.venv)(\/|$)/
+// editor/tool atomic-write droppings — not real activity targets
+const TMP_FILE = /(\.tmp(\.|$)|~$|\.swp$|\.swx$|(^|\/)\.#|(^|\/)#.+#$|\.DS_Store$)/
+
+function buildTree(dir, rel = '', depth = 0, budget = { n: 4000 }) {
+  if (depth > 8 || budget.n <= 0) return []
+  let entries = []
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return [] }
+  const out = []
+  for (const e of entries) {
+    if (budget.n-- <= 0) break
+    const r = rel ? rel + '/' + e.name : e.name
+    if (IGNORE.test(r) || TMP_FILE.test(r)) continue
+    if (e.isDirectory()) out.push({ name: e.name, path: r, dir: true, children: buildTree(path.join(dir, e.name), r, depth + 1, budget) })
+    else if (e.isFile()) out.push({ name: e.name, path: r, dir: false })
+  }
+  out.sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name))
+  return out
+}
+let tree = buildTree(repo)
+let treeDirty = false
+
 function safeRead(p) { try { return fs.readFileSync(p, 'utf8') } catch { return '' } }
 function statMtime(p) { try { return fs.statSync(p).mtimeMs } catch { return null } }
 
 function model() {
+  if (treeDirty) { tree = buildTree(repo); treeDirty = false }
   return {
-    session, plan: parsed.nodes,
+    session, plan: parsed.nodes, tree,
     planTitle: parsed.title,
     hasPlan: planText.length > 0,
     activity, recentActivity, planMtime,
@@ -100,9 +124,6 @@ function broadcast() {
 }
 
 // ---------- watcher ----------
-const IGNORE = /(^|\/)(\.git|node_modules|\.agenttrail|dist|build|\.next|__pycache__|\.venv)(\/|$)/
-// editor/tool atomic-write droppings — not real activity targets
-const TMP_FILE = /(\.tmp(\.|$)|~$|\.swp$|\.swx$|(^|\/)\.#|(^|\/)#.+#$|\.DS_Store$)/
 let planDebounce = null
 try {
   fs.watch(repo, { recursive: true }, (_ev, filename) => {
@@ -120,6 +141,7 @@ try {
       return
     }
     // plain repo churn → liveness signal
+    treeDirty = true
     activity = { file: f, at: Date.now() }
     if (!recentActivity.length || recentActivity[0].file !== f) recentActivity.unshift(activity)
     else recentActivity[0] = activity
