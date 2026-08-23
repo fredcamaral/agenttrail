@@ -365,7 +365,7 @@ tech: scaffolding
 // sessions stream tool calls + todos to the board. Additive and idempotent.
 function installHooks() {
   const dir = path.join(repo, '.claude')
-  const sp = path.join(dir, 'settings.json')
+  const sp = path.join(dir, 'settings.local.json')
   let cfg = {}
   try { cfg = JSON.parse(fs.readFileSync(sp, 'utf8')) } catch {}
   const cmd = `node ${JSON.stringify(fileURLToPath(import.meta.url))} hook`
@@ -379,6 +379,6 @@ function installHooks() {
   if (added) {
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(sp, JSON.stringify(cfg, null, 2) + '\n')
-    console.log(`wired ${added} claude code hooks into .claude/settings.json (live tool + todo stream)`)
+    console.log(`wired ${added} claude code hooks into .claude/settings.local.json (live tool + todo stream)`)
   }
 }

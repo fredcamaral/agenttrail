@@ -51,7 +51,7 @@ links: [notify]
 
 ## live runs (Claude Code)
 
-`init` also wires Claude Code hooks into the repo's `.claude/settings.json`. From then on every Claude session in that repo streams to the board: a **run card** per session — agent mark, elapsed time, the todo it's working on now, and the live tool line (`Bash · pnpm test · 41s`) — click to unfold the full todo list and recent tool calls. Runs pin to the component whose files they're editing, so the map glows where the 30-minute session actually is. Agents without hooks (Codex, anything else) still show through the file-activity layer.
+`init` also wires Claude Code hooks into the repo's `.claude/settings.local.json`. From then on every Claude session in that repo streams to the board: a **run card** per session — agent mark, elapsed time, the todo it's working on now, and the live tool line (`Bash · pnpm test · 41s`) — click to unfold the full todo list and recent tool calls. Runs pin to the component whose files they're editing, so the map glows where the 30-minute session actually is. Agents without hooks (Codex, anything else) still show through the file-activity layer.
 
 ## what you see
 
