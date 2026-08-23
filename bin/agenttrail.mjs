@@ -235,6 +235,7 @@ function statMtime(p) { try { return fs.statSync(p).mtimeMs } catch { return nul
 function model() {
   if (treeDirty) { tree = buildTree(repo); treeDirty = false }
   return {
+    boards,
     runs: liveRuns(),
     session, plan: parsed.nodes.map(n => n.level === 'component' ? { ...n, touchedAt: compTouched[n.id] || null, recent: compRecent[n.id] || [] } : n), tree,
     planTitle: parsed.title,
@@ -293,12 +294,30 @@ function throttleBroadcast() {
   else broadcastTick()
 }
 
+// ---------- sibling boards (multi-repo: one daemon per repo, boards link to each other) ----------
+let boards = [{ port, project: path.basename(repo), self: true }]
+async function discoverBoards() {
+  const found = [{ port, project: session.project, self: true }]
+  await Promise.allSettled([5330, 5331, 5332, 5333, 5334].filter(p => p !== port).map(async p => {
+    try {
+      const r = await fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(300) })
+      const j = await r.json()
+      if (j && j.project) found.push({ port: p, project: j.project, self: false })
+    } catch {}
+  }))
+  boards = found.sort((a, b) => a.port - b.port)
+}
+discoverBoards()
+setInterval(discoverBoards, 30000).unref()
+
 // ---------- http ----------
 const indexPath = path.join(__dirname, '..', 'public', 'index.html')
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x')
   if (u.pathname === '/') {
     res.writeHead(200, { 'content-type': 'text/html' }).end(fs.readFileSync(indexPath, 'utf8'))
+  } else if (u.pathname === '/whoami') {
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ project: session.project, port }))
   } else if (u.pathname === '/model') {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(model()))
   } else if (u.pathname === '/events') {
