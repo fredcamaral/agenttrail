@@ -308,6 +308,7 @@ async function discoverBoards() {
   boards = found.sort((a, b) => a.port - b.port)
 }
 discoverBoards()
+for (const t of [3000, 8000]) setTimeout(discoverBoards, t).unref() // cold-start: siblings may not be up yet
 setInterval(discoverBoards, 30000).unref()
 
 // ---------- http ----------
