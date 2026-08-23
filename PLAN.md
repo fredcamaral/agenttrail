@@ -37,7 +37,8 @@ needs: [watcher]
 ## Put it in people's hands {#ship}
 needs: [map, explorer]
 - [x] Public repo and readme {#ship-repo}
-- [ ] Fresh demo gif of the current look {#ship-gif}
+- [x] Fresh demo gif of the current look {#ship-gif}
+  by: claude
 - [ ] Publish to npm {#ship-npm}
 
 ## decisions
