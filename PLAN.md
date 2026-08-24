@@ -79,6 +79,9 @@ files: [README.md, docs/**, package.json]
 - [x] Say the trust line in the readme {#ship-trust}
   by: claude
   tech: README quick-start — 127.0.0.1 only, no telemetry, one readable file
+- [x] Make the repo explain itself at a glance {#ship-readme-magic}
+  by: codex
+  tech: README.md — felt problem, visual proof, one-command start, trust, then depth
 
 ## decisions
 - 2026-08-21: spine is the codebase (fs watcher + PLAN.md), not agent hooks; hooks become an optional fidelity adapter
@@ -88,3 +91,4 @@ files: [README.md, docs/**, package.json]
 - 2026-08-23: K. removed the plan-changes mechanism entirely — agenttrail is a live read-only status monitor
 - 2026-08-23: convention v2 — plan nodes are components (needs + links edges), titles are plain verb-led outcomes for the owner with tech: sublines; layout stays deterministic, the authoring agent is the generative part
 - 2026-08-23: run foreground, map as stage — hooks adapter is core (the 30-minute question is the product); file spine stays the fallback for hook-less agents
+- 2026-08-23: README leads with the moment agenttrail solves (returning to a long agent run and knowing exactly where it is), proves it with the live demo, then earns trust before exposing the full spec

@@ -7,62 +7,89 @@
 
 # agenttrail
 
-**A live map of what your coding agents are doing.**
+**Know what your coding agents are doing, while they are doing it.**
 
 [![npm](https://img.shields.io/npm/v/agenttrail?color=e9a23b&label=npm)](https://www.npmjs.com/package/agenttrail)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A520-2dd4bf)](package.json)
 [![stars](https://img.shields.io/github/stars/sodiumsun/agenttrail?style=social)](https://github.com/sodiumsun/agenttrail)
 
-![agenttrail watching itself being built: a claude session appears with its plan, edits stream live, and the demo task ticks green on camera](docs/demo.gif)
-
 </div>
 
-**agenttrail helps you see what your agents are doing in a long-running session.** Kick off Claude Code or Codex, leave it working, and keep one glanceable board open instead of scrollback:
+Your coding agent has been working for half an hour. Is it making progress? Is it stuck? Did it quietly reopen the part it already called done?
 
-- **where it is** — which component of your codebase the agent is inside right now
-- **what it's doing** — the task it's on and the tool call it's running, streaming live
-- **how far along** — the plan as a map, ticking green as work actually completes
-- **what changed while you were away** — including quiet revisions to "finished" work, which are never invisible
+agenttrail turns the answer into a live map. Start Claude Code or Codex, walk away, and come back to this:
 
-It's a local, open-source live dashboard for AI coding agents — one `npx` command, any repo, works with Claude Code, Codex, Cursor, or anything that edits files. And it only ever **observes**: it never sends a prompt, never edits your code, never phones home.
-
-## quick start
+![agenttrail watching itself being built: a Claude session appears with its plan, edits stream live, and the demo task ticks green on camera](docs/demo.gif)
 
 ```bash
 cd your-repo
 npx agenttrail --open
 ```
 
-That's level 1, zero setup: a VS Code-style file tree with live "just touched" accents, a **Working** badge, and — for Claude Code — **run cards** showing each session's task list and current tool call as it happens.
+That's it. No account, no global install, no telemetry. agenttrail opens on localhost and starts watching the repo.
 
-Level 2 is the map. Run `npx agenttrail init` once, then click **Copy backfill prompt** on the board and paste it to your agent. The agent studies the repo (code first, git history second, docs last) and writes `PLAN.md` — a component map with dependencies, evidence-cited history, and honest statuses. You never write the plan by hand; your agent does, and every agent session after that maintains it as it works.
+## the idea
+
+A plan says what the agent intends to do. The filesystem says what it actually touched. agenttrail shows both.
+
+| Signal | What it tells you |
+|---|---|
+| **Declared** | The component and task the agent says it is working on |
+| **Observed** | The files it is changing right now, including revisions to finished work |
+
+When those signals disagree, you know where to look. A completed card lights up when its files change again. A live run sits on the component it is touching. The map moves as the work moves.
 
 ## what you see
 
-- **The map** — 5–9 component cards laid out by real structure: `needs:` edges as arrows, `links:` as dashed ties. Green tick, amber spinner, red `!` per card.
-- **Live runs** — each Claude Code session as a card: its todo list, the streaming tool line (`Bash · pnpm test · 41s`), elapsed time, and which component it's inside.
-- **The session's own plan** — the agent's TodoWrite scratchpad rendered as pink *Session plan* rows inside the component it's working on; fades out a couple of hours after the session ends.
-- **Two layers of truth on every card** — *declared* (the checkbox: done / in progress / blocked) and *observed* (actual file writes: an amber ring with `Revising · daemon.py ×7 · 3s`). Revisiting finished work is never invisible, and a live card always has a child row explaining it.
-- **Provenance pills** — open tasks say who claims them: pink **Session plan** (an agent's imminent intent — correct it on sight) vs muted **Roadmap** (planning-doc intent, backloggable).
-- **Attribution** — tasks carry the mark of the agent that did them: the Claude spark, the OpenAI blossom, initials for anyone else.
-- **Multi-repo** — one daemon per repo; boards discover each other and appear as switcher tabs.
+- A map of 5–9 real components, with dependency arrows, dashed links, progress, and honest done, working, or blocked states
+- The current Claude Code run, including its task list, streaming tool line, elapsed time, and recent calls
+- The agent's own session plan inside the component it is working on, fading out a couple of hours after the run ends
+- A VS Code style repo tree with live "just touched" accents and a **Working** signal
+- Provenance pills that keep imminent agent intent separate from roadmap backlog
+- The Claude spark, OpenAI blossom, or contributor initials on completed tasks
+- One daemon per repo, with every live board in one tab switcher
+
+Instead of replaying a transcript, agenttrail shows the shape of the work, updated live.
+
+## give it the real map
+
+The first command works with any repo. You immediately get the live file tree, activity state, and Claude Code run cards when local hooks are present.
+
+For the full component map, run this once:
+
+```bash
+npx agenttrail init
+```
+
+`init` adds the agenttrail convention to `CLAUDE.md` and `AGENTS.md`, creates a starter `PLAN.md`, and installs additive local Claude Code hooks. Then click **Copy backfill prompt** on the board and paste it to your agent.
+
+The agent studies the code first, git history next, and planning prose last. It draws the repo as 5–9 components with real dependencies and verifiable statuses. You do not maintain a project-management board. Your agents maintain one small Markdown file as they work.
 
 ## works with
 
-| Agent | Live activity | Run cards + todos | Maintains the plan |
+| Agent | Live activity | Run cards and todos | Maintains the map |
 |---|---|---|---|
-| Claude Code | ✅ file watcher | ✅ via hooks (auto-installed, local) | ✅ via `CLAUDE.md` |
-| Codex | ✅ file watcher | — | ✅ via `AGENTS.md` |
-| Cursor / anything | ✅ file watcher | — | ✅ via `AGENTS.md` |
+| Claude Code | ✅ file watcher | ✅ local hooks | ✅ `CLAUDE.md` |
+| Codex | ✅ file watcher | — | ✅ `AGENTS.md` |
+| Cursor or anything else | ✅ file watcher | — | ✅ `AGENTS.md` |
 | You, a human | ✅ file watcher | — | up to you |
 
-## how it works
+## small enough to trust
 
-A single dependency-free Node file (~900 lines — read it: [`bin/agenttrail.mjs`](bin/agenttrail.mjs)). It watches the repo filesystem, parses `PLAN.md` into a model, accepts Claude Code hook events on localhost, and streams one derived model to a static page over SSE. Every pixel is a projection of two sources: the plan file (durable, agent-curated) and observed events (live, decaying). No database, no build step, no cloud.
+The daemon is one dependency-free Node file, about 470 lines. The interface is one static HTML file. There is no database, build step, cloud service, account, or telemetry.
+
+It binds to **127.0.0.1 only**. Claude Code hooks live in the repo-local `.claude/settings.local.json` and relay events to the local daemon. While it runs, agenttrail only observes. It never sends a prompt or edits your code.
+
+The entire model comes from two sources:
+
+1. `PLAN.md`, the durable map curated by your agents
+2. Local events, the live trail that fades as activity gets old
+
+Read the core: [`bin/agenttrail.mjs`](bin/agenttrail.mjs).
 
 <details>
-<summary><b>The PLAN.md convention (the spec)</b></summary>
+<summary><b>The PLAN.md convention</b></summary>
 
 ```markdown
 # my project
@@ -85,31 +112,27 @@ links: [notify]
 - 2026-08-21: dropped redis for summaries; in-process queue instead
 ```
 
-- nodes are **components** of the system (`## Plain-language name {#id}`) — verb-led, concrete titles the owner can verify done; engineer phrasing goes on a `tech:` line
-- 5–9 components regardless of repo size; grow tasks, not cards
-- `- [~]` in progress · `- [x]` done · `- [!]` stuck — cards roll these up as spinner / tick / red `!`
-- `needs: [id]` = ordering (arrows) · `links: [id]` = coupling (dashed)
-- `files: [globs]` = the paths a component owns; powers the observed-activity ring
-- `by: <agent>` = who did it · `from: agent|roadmap` = who claims an open task
-- backfilled `[x]` tasks must cite their implementing file as evidence; decisions are logged under `## decisions` before acting
-
-`agenttrail init` writes this convention into `CLAUDE.md` and `AGENTS.md` so agents maintain it natively.
+- Components use stable `{#id}` values and concrete, owner-readable names
+- `files:` connects observed writes to the component they belong to
+- `[~]` means working, `[x]` means done, and `[!]` means stuck
+- `needs:` draws dependency arrows; `links:` draws dashed connections
+- `by:` records who did the work; `from:` separates agent intent from roadmap intent
+- Backfilled completed tasks cite their implementing file as evidence
+- Agents record plan-affecting decisions before they act on them
 
 </details>
 
-## private by construction
-
-The daemon binds to **127.0.0.1 only** — nothing is reachable from outside your machine, nothing leaves it, zero telemetry, no accounts. The optional Claude Code hooks are additive entries in your repo's gitignored `.claude/settings.local.json`, relaying tool events to your local daemon and nowhere else. If you want to verify any of this, it's one file.
-
 ## faq
 
-**Does it work on a repo with no plan?** Yes — the live layer (tree, activity, run cards) needs nothing. The map appears when your agent writes `PLAN.md`.
+**Does it work without `PLAN.md`?** Yes. The live tree, activity feed, and run cards need no plan. The map appears when your agent writes one.
 
-**Huge repo?** Tested on a 78k-file repo: breadth-first tree with per-directory caps, tiny SSE ticks, an honest "tree abridged" note.
+**Does agenttrail control my agent?** No. It observes and draws. It never sends a prompt. `init` prints the optional backfill prompt, and the board can copy it to your clipboard.
 
-**Does it drive my agent?** Never. agenttrail observes and draws. The only thing it ever hands you is a prompt on your clipboard.
+**What does `init` change?** It creates the starter plan, appends the convention to the repo's agent instruction files, adds `.agenttrail/` to `.gitignore`, and installs local Claude Code hooks. The running dashboard itself is read only.
 
-**Stale plan?** Tell any agent session: *"re-verify PLAN.md against the code."* The board heals as the file does.
+**What about a huge repo?** agenttrail has been tested on a 78k-file repo. It reads the tree breadth first with per-directory caps, sends tiny SSE activity ticks, and tells you when the tree is abridged.
+
+**What if the plan goes stale?** Tell any agent: `re-verify PLAN.md against the code.` The board updates as the file does.
 
 ## license
 
