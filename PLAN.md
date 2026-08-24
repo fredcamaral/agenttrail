@@ -69,7 +69,8 @@ files: [README.md, docs/**, package.json]
   by: claude
   from: agent
   tech: live activity feed as the no-plan hero, backfill banner demoted
-- [ ] Filmed real-session demo video {#ship-video}
+- [x] Filmed real-session demo video {#ship-video}
+  by: claude
   from: agent
 - [x] Survive machines that aren't this one {#ship-portable}
   by: claude
