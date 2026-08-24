@@ -18,15 +18,14 @@
 
 </div>
 
-agenttrail is a local, open-source **live dashboard for AI coding agents** — Claude Code, Codex, Cursor, or anything that edits files. One command gives you a real-time board for any repo: which part of the codebase the agent is in, the task it's working on, the tool call it's running *right now*, and what got done while you were away.
+**agenttrail helps you see what your agents are doing in a long-running session.** Kick off Claude Code or Codex, leave it working, and keep one glanceable board open instead of scrollback:
 
-> agentmap helps your agent see your code. **agenttrail helps you see your agent.**
+- **where it is** — which component of your codebase the agent is inside right now
+- **what it's doing** — the task it's on and the tool call it's running, streaming live
+- **how far along** — the plan as a map, ticking green as work actually completes
+- **what changed while you were away** — including quiet revisions to "finished" work, which are never invisible
 
-## why
-
-You kick off an agent, it runs for thirty minutes, and your only window into it is terminal scrollback. You can't tell where it is in the plan, whether it's building or stuck, or what it quietly revised while you got coffee. Agent work is invisible by default.
-
-agenttrail makes it visible without driving anything: it **observes** — the filesystem, the plan, the agent's own event stream — and draws. It never sends a prompt, never edits your code, never phones home.
+It's a local, open-source live dashboard for AI coding agents — one `npx` command, any repo, works with Claude Code, Codex, Cursor, or anything that edits files. And it only ever **observes**: it never sends a prompt, never edits your code, never phones home.
 
 ## quick start
 
