@@ -62,7 +62,18 @@ files: [README.md, docs/**, package.json]
 - [x] Public repo and readme {#ship-repo}
 - [x] Fresh demo gif of the current look {#ship-gif}
   by: claude
-- [ ] Publish to npm {#ship-npm}
+- [!] Publish to npm (waiting on Kelly's npm login) {#ship-npm}
+  from: agent
+- [~] First screen is alive with zero convention {#ship-empty}
+  by: claude
+  from: agent
+  tech: live activity feed as the no-plan hero, backfill banner demoted
+- [ ] Filmed real-session demo video {#ship-video}
+  from: agent
+- [ ] Survive machines that aren't this one {#ship-portable}
+  from: agent
+  tech: free-port pickup, linux watcher fallback, windows paths, no-git repos
+- [ ] Say the trust line in the readme {#ship-trust}
   from: agent
 
 ## decisions
