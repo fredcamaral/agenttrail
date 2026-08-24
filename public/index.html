@@ -208,9 +208,10 @@ function renderBoards(){
   el.style.display=''
   el.innerHTML=b.map(x=>x.self?`<span class="tab on">${esc(x.project)}</span>`:`<a class="tab" href="http://localhost:${x.port}">${esc(x.project)}</a>`).join('')
 }
+let lastRunsHtml=''
 function renderRuns(){
   const runs=M.runs||[]
-  $('runs').innerHTML=runs.map(r=>{
+  const html=runs.map(r=>{
     const cur=(r.todos||[]).find(t=>t.status==='in_progress')
     const tool=r.currentTool||r.recentTools[0]
     const toolLine=tool?`<div class="run-tool"><span class="tn">${esc(tool.name)}</span><span class="td">${esc(tool.detail||'')}</span><span class="ta t-ago" data-at="${tool.at}"></span></div>`:''
@@ -224,6 +225,7 @@ function renderRuns(){
       ${toolLine}
       <div class="run-detail">${todos}${hist?`<div style="margin-top:8px">${hist}</div>`:''}</div>
     </div>`}).join('')
+  if(html!==lastRunsHtml){lastRunsHtml=html;$('runs').innerHTML=html}
 }
 $('runs').addEventListener('click',e=>{const c=e.target.closest('.run-card');if(!c)return;const id=c.dataset.run
   openRuns.has(id)?openRuns.delete(id):openRuns.add(id);renderRuns();renderTimes()})
