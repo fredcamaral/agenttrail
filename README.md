@@ -17,7 +17,7 @@ npx agenttrail               # starts the daemon → http://localhost:5330
 
 Then the one human step: the board shows a **Copy backfill prompt** button while the plan is a skeleton — paste that prompt to Claude Code or Codex in the repo, and the agent rewrites PLAN.md as the real component map. The board fills in live as it writes.
 
-All local. No cloud, no accounts, no hooks required.
+**All local, verifiably.** The daemon binds to 127.0.0.1 only — nothing is reachable from outside your machine, nothing leaves it, and there is zero telemetry. No cloud, no accounts. The optional Claude Code hooks are additive entries in your repo's gitignored `.claude/settings.local.json` (they relay tool events to your local daemon and nowhere else), and the whole tool is one dependency-free file you can read in a sitting: [`bin/agenttrail.mjs`](bin/agenttrail.mjs).
 
 ## the PLAN.md convention (the spec)
 

@@ -70,12 +70,13 @@ files: [README.md, docs/**, package.json]
   tech: live activity feed as the no-plan hero, backfill banner demoted
 - [ ] Filmed real-session demo video {#ship-video}
   from: agent
-- [~] Survive machines that aren't this one {#ship-portable}
+- [x] Survive machines that aren't this one {#ship-portable}
   by: claude
   from: agent
   tech: free-port pickup, linux watcher fallback, windows paths, no-git repos
-- [ ] Say the trust line in the readme {#ship-trust}
-  from: agent
+- [x] Say the trust line in the readme {#ship-trust}
+  by: claude
+  tech: README quick-start — 127.0.0.1 only, no telemetry, one readable file
 
 ## decisions
 - 2026-08-21: spine is the codebase (fs watcher + PLAN.md), not agent hooks; hooks become an optional fidelity adapter

@@ -40,7 +40,7 @@ async function relayHook() {
   let raw = ''
   try { for await (const c of process.stdin) raw += c } catch {}
   if (!raw) return
-  const ports = process.env.AGENTTRAIL_PORT ? [parseInt(process.env.AGENTTRAIL_PORT, 10)] : [5330, 5331, 5332, 5333, 5334]
+  const ports = process.env.AGENTTRAIL_PORT ? [parseInt(process.env.AGENTTRAIL_PORT, 10)] : Array.from({ length: 15 }, (_, i) => 5330 + i)
   await Promise.allSettled(ports.map(p => fetch(`http://127.0.0.1:${p}/hook`, {
     method: 'POST', body: raw, signal: AbortSignal.timeout(400),
   }).catch(() => {})))
@@ -292,7 +292,7 @@ let planDebounce = null
 try {
   fs.watch(repo, { recursive: true }, (_ev, filename) => {
     if (!filename) return
-    const f = filename.toString()
+    const f = filename.toString().split(path.sep).join('/')
     if (IGNORE.test(f) || TMP_FILE.test(f)) return
     if (path.resolve(repo, f) === planPath) {
       clearTimeout(planDebounce)
@@ -316,7 +316,27 @@ try {
     throttleBroadcast()
   })
 } catch (e) {
-  console.error('watcher failed:', e.message)
+  // recursive watch is unsupported on some platforms (older linux) — degrade:
+  // PLAN.md and top-level changes still tracked, deep activity limited.
+  try {
+    fs.watch(repo, (_ev, filename) => {
+      if (!filename) return
+      const f = filename.toString()
+      if (path.resolve(repo, f) === planPath) {
+        clearTimeout(planDebounce)
+        planDebounce = setTimeout(() => {
+          planText = safeRead(planPath)
+          parsed = parsePlan(planText)
+          rebuildMatchers()
+          planMtime = statMtime(planPath)
+          broadcast()
+        }, 150)
+      }
+    })
+    console.error('note: recursive file watching unavailable here — plan updates still live, deep file activity limited')
+  } catch (e2) {
+    console.error('watcher failed:', e2.message)
+  }
 }
 let lastActivityPush = 0
 function throttleBroadcast() {
@@ -331,7 +351,7 @@ function throttleBroadcast() {
 let boards = [{ port, project: path.basename(repo), self: true }]
 async function discoverBoards() {
   const found = [{ port, project: session.project, self: true }]
-  await Promise.allSettled([5330, 5331, 5332, 5333, 5334].filter(p => p !== port).map(async p => {
+  await Promise.allSettled(Array.from({ length: 15 }, (_, i) => 5330 + i).filter(p => p !== port).map(async p => {
     try {
       const r = await fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(300) })
       const j = await r.json()
@@ -373,14 +393,22 @@ function hookTick() {
   const now = Date.now()
   if (now - lastHookTick > 300) { lastHookTick = now; broadcastTick() }
 }
-server.listen(port, '127.0.0.1', () => {
+function listenWithFallback(tries = 20) {
+  server.once('error', e => {
+    if (e.code === 'EADDRINUSE' && tries > 0) { port += 1; listenWithFallback(tries - 1) }
+    else { console.error('could not bind a port:', e.message); process.exit(1) }
+  })
+  server.listen(port, '127.0.0.1', onListen)
+}
+function onListen() {
   console.log(`agenttrail · ${session.project} · http://localhost:${port}`)
   if (!planText) console.log('no PLAN.md found — run `agenttrail init` in the repo to scaffold one')
   if (openBrowser) {
     const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open'
     import('node:child_process').then(cp => cp.spawn(opener, [`http://localhost:${port}`], { stdio: 'ignore', detached: true }))
   }
-})
+}
+listenWithFallback()
 
 // ---------- init ----------
 function init() {
