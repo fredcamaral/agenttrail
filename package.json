@@ -1,7 +1,7 @@
 {
   "name": "agenttrail",
   "version": "0.1.0",
-  "description": "A live map of what your coding agents are doing. Plan and position, watched in real time.",
+  "description": "Local observability map for AI coding agents. Watch Claude Code, Codex, and Cursor plans, tool calls, file changes, and progress in real time.",
   "type": "module",
   "bin": {
     "agenttrail": "./bin/agenttrail.mjs"
@@ -21,11 +21,21 @@
   },
   "homepage": "https://github.com/sodiumsun/agenttrail#readme",
   "keywords": [
+    "ai-agents",
     "claude-code",
     "codex",
+    "openai-codex",
+    "cursor-ai",
     "coding-agents",
+    "ai-coding-agents",
     "agent-observability",
+    "agent-monitoring",
+    "coding-agent-monitoring",
     "live-map",
+    "live-dashboard",
+    "local-first",
+    "progress-tracking",
+    "file-watcher",
     "plan",
     "monitor"
   ]

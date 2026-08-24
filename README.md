@@ -18,7 +18,9 @@
 
 Your coding agent has been working for half an hour. Is it making progress? Is it stuck? Did it quietly reopen the part it already called done?
 
-agenttrail turns the answer into a live map. Start Claude Code or Codex, walk away, and come back to this:
+agenttrail is a local, open-source observability layer for AI coding agents. It turns plans, tool calls, file changes, and progress from Claude Code, OpenAI Codex, Cursor, or any agent that edits files into a live project map.
+
+Start an agent, walk away, and come back to this:
 
 ![agenttrail watching itself being built: a Claude session appears with its plan, edits stream live, and the demo task ticks green on camera](docs/demo.gif)
 
@@ -29,7 +31,7 @@ npx agenttrail --open
 
 That's it. No account, no global install, no telemetry. agenttrail opens on localhost and starts watching the repo.
 
-## the idea
+## How the live agent map works
 
 A plan says what the agent intends to do. The filesystem says what it actually touched. agenttrail shows both.
 
@@ -40,7 +42,7 @@ A plan says what the agent intends to do. The filesystem says what it actually t
 
 When those signals disagree, you know where to look. A completed card lights up when its files change again. A live run sits on the component it is touching. The map moves as the work moves.
 
-## what you see
+## What you see
 
 - A map of 5–9 real components, with dependency arrows, dashed links, progress, and honest done, working, or blocked states
 - The current Claude Code run, including its task list, streaming tool line, elapsed time, and recent calls
@@ -52,7 +54,7 @@ When those signals disagree, you know where to look. A completed card lights up 
 
 Instead of replaying a transcript, agenttrail shows the shape of the work, updated live.
 
-## give it the real map
+## Give it the real map
 
 The first command works with any repo. You immediately get the live file tree, activity state, and Claude Code run cards when local hooks are present.
 
@@ -66,16 +68,15 @@ npx agenttrail init
 
 The agent studies the code first, git history next, and planning prose last. It draws the repo as 5–9 components with real dependencies and verifiable statuses. You do not maintain a project-management board. Your agents maintain one small Markdown file as they work.
 
-## works with
+## Supported coding agents
 
 | Agent | Live activity | Run cards and todos | Maintains the map |
 |---|---|---|---|
 | Claude Code | ✅ file watcher | ✅ local hooks | ✅ `CLAUDE.md` |
-| Codex | ✅ file watcher | — | ✅ `AGENTS.md` |
+| OpenAI Codex | ✅ file watcher | — | ✅ `AGENTS.md` |
 | Cursor or anything else | ✅ file watcher | — | ✅ `AGENTS.md` |
-| You, a human | ✅ file watcher | — | up to you |
 
-## small enough to trust
+## Local by construction
 
 The daemon is one dependency-free Node file, about 470 lines. The interface is one static HTML file. There is no database, build step, cloud service, account, or telemetry.
 
@@ -122,9 +123,13 @@ links: [notify]
 
 </details>
 
-## faq
+## FAQ
 
 **Does it work without `PLAN.md`?** Yes. The live tree, activity feed, and run cards need no plan. The map appears when your agent writes one.
+
+**What does coding agent observability mean here?** LLM observability usually focuses on traces, latency, tokens, and cost. agenttrail focuses on the work happening in a repo: which component an agent is in, what tool it is running, what files it is changing, and whether its plan is moving.
+
+**Which AI coding agents does agenttrail support?** Claude Code has the richest live view through local hooks. OpenAI Codex, Cursor, and any agent that edits files work through the repo watcher and can maintain the map through `AGENTS.md`.
 
 **Does agenttrail control my agent?** No. It observes and draws. It never sends a prompt. `init` prints the optional backfill prompt, and the board can copy it to your clipboard.
 
@@ -134,6 +139,6 @@ links: [notify]
 
 **What if the plan goes stale?** Tell any agent: `re-verify PLAN.md against the code.` The board updates as the file does.
 
-## license
+## License
 
 MIT

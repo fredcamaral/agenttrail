@@ -82,6 +82,9 @@ files: [README.md, docs/**, package.json]
 - [x] Make the repo explain itself at a glance {#ship-readme-magic}
   by: codex
   tech: README.md — felt problem, visual proof, one-command start, trust, then depth
+- [x] Make agenttrail easy to find and describe {#ship-discovery}
+  by: codex
+  tech: README definition, sentence-case headings, npm metadata, GitHub description and topics
 
 ## decisions
 - 2026-08-21: spine is the codebase (fs watcher + PLAN.md), not agent hooks; hooks become an optional fidelity adapter
@@ -92,3 +95,4 @@ files: [README.md, docs/**, package.json]
 - 2026-08-23: convention v2 — plan nodes are components (needs + links edges), titles are plain verb-led outcomes for the owner with tech: sublines; layout stays deterministic, the authoring agent is the generative part
 - 2026-08-23: run foreground, map as stage — hooks adapter is core (the 30-minute question is the product); file spine stays the fallback for hook-less agents
 - 2026-08-23: README leads with the moment agenttrail solves (returning to a long agent run and knowing exactly where it is), proves it with the live demo, then earns trust before exposing the full spec
+- 2026-08-23: discovery position is "a local observability layer and live project map for AI coding agents"; distinguish it from LLM trace and cost dashboards with current plans, tool calls, file changes, progress, and revisions, using direct definitions and repository topics instead of keyword stuffing
