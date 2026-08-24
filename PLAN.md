@@ -62,8 +62,9 @@ files: [README.md, docs/**, package.json]
 - [x] Public repo and readme {#ship-repo}
 - [x] Fresh demo gif of the current look {#ship-gif}
   by: claude
-- [!] Publish to npm (waiting on Kelly's npm login) {#ship-npm}
-  from: agent
+- [x] Publish to npm {#ship-npm}
+  by: claude
+  tech: agenttrail@0.1.0 — npx agenttrail
 - [x] First screen is alive with zero convention {#ship-empty}
   by: claude
   from: agent
