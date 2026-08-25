@@ -50,7 +50,7 @@ When those signals disagree, you know where to look. A completed card lights up 
 - A VS Code style repo tree with live "just touched" accents and a **Working** signal
 - Provenance pills that keep imminent agent intent separate from roadmap backlog
 - The Claude spark, OpenAI blossom, or contributor initials on completed tasks
-- One daemon per repo, with every live board in one tab switcher
+- One daemon per repo, with every live board in one tab switcher. Adding a repo is a sentence to your agent — *"run npx agenttrail in this repo"* — and the tab appears on every board within seconds; kill that daemon and it disappears everywhere
 
 Instead of replaying a transcript, agenttrail shows the shape of the work, updated live.
 
