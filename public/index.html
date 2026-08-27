@@ -427,8 +427,7 @@ function renderRuns(){
   if(M){
     const selfLive=(M.runs||[]).some(r=>!r.ended)
     const hot=M.activity&&Date.now()-M.activity.at<120000
-    if(M.hooksInstalled===false)hint=`<div class="run-card ended" style="cursor:default"><div class="run-task" style="margin-top:0;white-space:normal;color:var(--dim)">Run cards (live todos + tool calls) need Claude Code hooks. Wire them with <b style="color:var(--text)">npx agenttrail init</b> in this repo — local only, gitignored.</div></div>`
-    else if(hot&&!selfLive)hint=`<div class="run-card ended" style="cursor:default"><div class="run-task" style="margin-top:0;white-space:normal;color:var(--dim)">Something is editing this repo without streaming — that session probably started before hooks were installed. Restart it and its plan + tool calls appear here.</div></div>`
+    if(M.hooksInstalled===false)hint=`<div class="run-card ended" style="cursor:default"><div class="run-task" style="margin-top:0;white-space:normal;color:var(--dim)">Watching file changes. For each session's live plan and tool calls too, run <b style="color:var(--text)">npx agenttrail init</b> here once — local only, gitignored.</div></div>`
   }
   const out=html+hint
   if(out!==lastRunsHtml){lastRunsHtml=out;$('runs').innerHTML=out}
