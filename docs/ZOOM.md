@@ -33,6 +33,10 @@ Rules: zoom only ever moves within containment (never switches subject); altitud
 
 Tasks live in the Plan overlay as annotations on components — they are work, not geography, which is why "zoom into a task" doesn't exist.
 
+## What earns a card (the organ test)
+
+Cards are **anatomy, not history**. A new prompt or session never creates a card: its todos render as ephemeral Session-plan rows inside whichever card its file-writes pin to, and durable outcomes graduate as tasks. A card is born only when the system grows a lasting new part — it will own files no card claims, has at least one edge, one agent could own it for a session, and the owner would name it when describing the product (logged under `## decisions`). Housekeeping never enters the plan; cards die only when their subsystem is deleted; the 5–9 governor forces merges before sprawl.
+
 ## Why this shape (precedents)
 
 - **Semantic zoom + containment-only**: Pad++/ZUI research; the Prezi failure mode ("Prezilepsy") is zoom across arbitrary spatial relationships.

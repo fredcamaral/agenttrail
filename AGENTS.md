@@ -10,5 +10,6 @@ Maintain PLAN.md as the living plan. It is read by the project OWNER, not by you
 - `files: [src/audio/**, config.py]` under a component declares which paths it owns — keep it current; it is how the live view knows which component you are really working in, including when you revisit finished work
 - `{#id}`s are stable — never rename, only add or remove nodes
 - open tasks carry an indented `from:` line naming their provenance — `from: agent` when YOU are declaring it as your own imminent build intent (the owner corrects these on sight if wrong), `from: roadmap` when it comes from planning documents (durable intent, backloggable); omit when neither
+- new work NEVER creates a component by default: it lands as your session todos plus tasks under the component whose files it touches. Add a NEW component only when the system grows a durable new part — it will own files no component claims, has an edge, one agent could own it for a session, and the owner would name it when describing the product; record the addition under `## decisions`. Remove a component only when that part is deleted from the product
 - before ending a session, graduate your plan-worthy completed todos into PLAN.md as `[x]` tasks (with `by:`) — housekeeping todos stay out of the plan
 - record any plan-affecting decision under `## decisions` BEFORE implementing it
