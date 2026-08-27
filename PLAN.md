@@ -39,6 +39,10 @@ files: [public/**, assets/brand/**]
   tech: convention v2 — verb-led titles + tech: sublines
 - [x] Put the selected logo in the header {#map-logo}
   by: codex
+- [x] Keep the header compact and the current map in view {#map-frame}
+  by: codex
+  from: agent
+  tech: valid encoded favicon; one-row status rail; viewport-bound app shell
 
 ## Show the repo like an editor {#explorer}
 tech: vs-code-style file tree
