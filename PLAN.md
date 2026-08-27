@@ -76,6 +76,10 @@ files: [bin/**, public/**]
 - [x] Zoom into a component's files {#fleet-l2}
   by: claude
   tech: L2 at 150% — files: globs ∩ tree, heat-sorted, agent mark on the hottest file
+- [x] One world: repos as regions on a single map, no format switch {#fleet-world}
+  by: claude
+  from: agent
+  tech: every board serves the merged world; regions LOD from card to components; multi-root sidebar; fleet page retired
 - [x] Corner minimap with viewport jump {#fleet-minimap}
   by: claude
   tech: overview+detail per the research — status-colored nodes, click to jump
@@ -122,3 +126,4 @@ files: [README.md, docs/**, package.json]
 - 2026-08-23: discovery position is "a local observability layer and live project map for AI coding agents"; distinguish it from LLM trace and cost dashboards with current plans, tool calls, file changes, progress, and revisions, using direct definitions and repository topics instead of keyword stuffing
 - 2026-08-27: infinity map scoped as altitudes, not canvas soup — fleet (parallel agents) > board > capsules; zoom is the switcher; data-flow edges deferred until observable
 - 2026-08-27: zoom model doc'd in docs/ZOOM.md — space is zoomable (containment only), work is overlay paint at its address; tasks are Plan-overlay annotations, never zoom destinations; symbols + data-flow deferred
+- 2026-08-27: fleet page retired — the world IS the map; regions LOD from name-card to full board at 30%; tabs and run cards fly the camera instead of navigating; sidebar is multi-root with lazy sibling trees

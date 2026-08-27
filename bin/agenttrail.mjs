@@ -298,7 +298,7 @@ function hotFiles() {
 function model() {
   if (treeDirty) { tree = buildTree(repo); treeDirty = false }
   return {
-    boards,
+    boards, port,
     runs: liveRuns(),
     session, plan: parsed.nodes.map(n => n.level === 'component' ? { ...n, touchedAt: compTouched[n.id] || null, recent: compRecent[n.id] || [], filesList: compFilesFor(n.id) } : n), tree,
     planTitle: parsed.title,
@@ -405,6 +405,26 @@ function summaryModel() {
     activity,
   }
 }
+function liteModel() {
+  const m = model()
+  const { tree, treeTruncated, ...rest } = m
+  return { ...rest, port, project: session.project }
+}
+let worldCache = { at: 0, data: null }
+async function worldModel() {
+  if (Date.now() - worldCache.at < 1500 && worldCache.data) return worldCache.data
+  const out = []
+  await Promise.allSettled(boards.map(async b => {
+    if (b.self) { out.push(liteModel()); return }
+    try {
+      const r = await fetch(`http://127.0.0.1:${b.port}/board-lite`, { signal: AbortSignal.timeout(500) })
+      out.push(await r.json())
+    } catch {}
+  }))
+  out.sort((a, b) => a.port - b.port)
+  worldCache = { at: Date.now(), data: out }
+  return out
+}
 let fleetCache = { at: 0, data: null }
 async function fleetModel() {
   if (Date.now() - fleetCache.at < 1500 && fleetCache.data) return fleetCache.data
@@ -429,6 +449,18 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html' }).end(fs.readFileSync(indexPath, 'utf8'))
   } else if (u.pathname === '/whoami') {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ project: session.project, port }))
+  } else if (u.pathname === '/board-lite') {
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(liteModel()))
+  } else if (u.pathname === '/world') {
+    worldModel().then(d => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(d)))
+  } else if (u.pathname === '/tree') {
+    if (treeDirty) { tree = buildTree(repo); treeDirty = false }
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ tree, treeTruncated }))
+  } else if (u.pathname === '/tree-of') {
+    const p = parseInt(u.searchParams.get('port'), 10)
+    fetch(`http://127.0.0.1:${p}/tree`, { signal: AbortSignal.timeout(1500) })
+      .then(r => r.text()).then(t => res.writeHead(200, { 'content-type': 'application/json' }).end(t))
+      .catch(() => res.writeHead(502).end('{}'))
   } else if (u.pathname === '/summary') {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(summaryModel()))
   } else if (u.pathname === '/fleet') {
