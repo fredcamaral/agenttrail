@@ -8,6 +8,13 @@ files: [bin/**]
   tech: stable {#id}s, needs/links edges, [~] active marker
 - [x] Re-read it the moment the agent edits it {#plan-watch}
   tech: fs watcher + 150ms debounce
+- [~] Warn when the plan falls behind moving code {#plan-stale}
+  by: claude
+  from: agent
+  tech: planStale in the model; topbar chip; SessionStart nudge injected via hooks
+- [ ] Lint the plan: structural warnings on the board {#plan-lint}
+  from: agent
+  tech: dup ids, unknown edge refs, uncited [x], missing files:, count governor
 
 ## Watch the repo {#watcher}
 tech: recursive fs watcher
@@ -55,6 +62,9 @@ files: [bin/**, public/**]
   by: claude
 - [x] Pin runs to components so the map glows where work happens {#runs-pin}
   by: claude
+- [ ] Explain missing run cards in-product {#runs-explain}
+  from: agent
+  tech: hooksInstalled flag; hints for no-hooks and pre-hook sessions
 
 ## See the whole fleet {#fleet}
 tech: /summary + /fleet aggregation; zoom-out altitude with live repo cards
@@ -100,6 +110,12 @@ files: [README.md, docs/**, package.json]
 - [x] Filmed real-session demo video {#ship-video}
   by: claude
   from: agent
+- [ ] One-command first run {#ship-onboard}
+  from: agent
+  tech: virgin repo → inline consented init, browser opens by default, prompt on clipboard
+- [ ] Keep boards alive across reboots {#ship-lifecycle}
+  from: agent
+  tech: agenttrail up (relaunch known repos) + autostart (launchd/systemd)
 - [x] Survive machines that aren't this one {#ship-portable}
   by: claude
   from: agent
