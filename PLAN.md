@@ -64,6 +64,9 @@ files: [bin/**, public/**]
 - [x] Zoom out past the map into the fleet view {#fleet-altitude}
   by: claude
   tech: repo cards — mini status map, live glow, agents present, current tool
+- [x] Zoom is the detail dial: capsules auto-unfold as the camera closes {#fleet-semantic}
+  by: claude
+  tech: hysteresis 1.05/0.85; overlay toggles (activity, runs); run cards fly to their component
 - [ ] Draw each session's trail across the components it visited {#fleet-trails}
   from: agent
   tech: run.path recording already landed; needs the fading polyline renderer
@@ -112,3 +115,4 @@ files: [README.md, docs/**, package.json]
 - 2026-08-23: README leads with the moment agenttrail solves (returning to a long agent run and knowing exactly where it is), proves it with the live demo, then earns trust before exposing the full spec
 - 2026-08-23: discovery position is "a local observability layer and live project map for AI coding agents"; distinguish it from LLM trace and cost dashboards with current plans, tool calls, file changes, progress, and revisions, using direct definitions and repository topics instead of keyword stuffing
 - 2026-08-27: infinity map scoped as altitudes, not canvas soup — fleet (parallel agents) > board > capsules; zoom is the switcher; data-flow edges deferred until observable
+- 2026-08-27: zoom model doc'd in docs/ZOOM.md — space is zoomable (containment only), work is overlay paint at its address; tasks are Plan-overlay annotations, never zoom destinations; symbols + data-flow deferred
