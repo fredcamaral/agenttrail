@@ -184,7 +184,11 @@ function handleHookEvent(ev) {
     if (rel) {
       touchComponents(rel, Date.now())
       activity = { file: rel, at: Date.now() }
-      for (const m of compMatchers) if (m.res.some(re => re.test(rel))) run.componentId = m.id
+      for (const m of compMatchers) if (m.res.some(re => re.test(rel))) {
+        if (run.componentId !== m.id) (run.path = run.path || []).push({ c: m.id, at: Date.now() })
+        run.componentId = m.id
+        if (run.path && run.path.length > 20) run.path.shift()
+      }
     }
   } else return false
   return true
@@ -364,6 +368,31 @@ discoverBoards()
 for (const t of [3000, 8000]) setTimeout(discoverBoards, t).unref() // cold-start: siblings may not be up yet
 setInterval(discoverBoards, 30000).unref()
 
+// ---------- fleet (the zoomed-out altitude) ----------
+function summaryModel() {
+  return {
+    port, project: session.project, hasPlan: planText.length > 0,
+    components: parsed.nodes.filter(n => n.level === 'component').map(n => ({ id: n.id, title: n.title, status: n.status, touchedAt: compTouched[n.id] || null })),
+    runs: liveRuns().map(r => ({ agent: r.agent, ended: r.ended, componentId: r.componentId, startedAt: r.startedAt, tool: r.currentTool ? `${r.currentTool.name} · ${r.currentTool.detail}` : null, todos: (r.todos || []).length, todosDone: (r.todos || []).filter(t => t.status === 'completed').length })),
+    activity,
+  }
+}
+let fleetCache = { at: 0, data: null }
+async function fleetModel() {
+  if (Date.now() - fleetCache.at < 1500 && fleetCache.data) return fleetCache.data
+  const out = []
+  await Promise.allSettled(boards.map(async b => {
+    if (b.self) { out.push(summaryModel()); return }
+    try {
+      const r = await fetch(`http://127.0.0.1:${b.port}/summary`, { signal: AbortSignal.timeout(400) })
+      out.push(await r.json())
+    } catch {}
+  }))
+  out.sort((a, b) => a.port - b.port)
+  fleetCache = { at: Date.now(), data: out }
+  return out
+}
+
 // ---------- http ----------
 const indexPath = path.join(__dirname, '..', 'public', 'index.html')
 const server = http.createServer((req, res) => {
@@ -372,6 +401,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html' }).end(fs.readFileSync(indexPath, 'utf8'))
   } else if (u.pathname === '/whoami') {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ project: session.project, port }))
+  } else if (u.pathname === '/summary') {
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(summaryModel()))
+  } else if (u.pathname === '/fleet') {
+    fleetModel().then(d => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(d)))
   } else if (u.pathname === '/model') {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(model()))
   } else if (u.pathname === '/events') {

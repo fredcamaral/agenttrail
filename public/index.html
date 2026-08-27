@@ -23,6 +23,29 @@
 .zero-row .zf{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .zero-row .za{margin-left:auto;color:var(--faint);flex:none;font-variant-numeric:tabular-nums}
 .zero-empty{padding:14px 12px;color:var(--faint);font-size:12.5px}
+.fleet{position:absolute;inset:0;z-index:3;display:none;overflow:auto;background:var(--bg);padding:56px 48px}
+.fleet.on{display:block;animation:reveal 500ms var(--ease-out) both}
+.fleet-head{max-width:1080px;margin:0 auto 22px;display:flex;align-items:baseline;gap:14px}
+.fleet-head h1{font-size:22px;font-weight:600;letter-spacing:-.03em}
+.fleet-head .fh-sub{color:var(--faint);font-size:12.5px}
+.fleet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;max-width:1080px;margin:0 auto}
+.fleet-card{position:relative;padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:var(--surface);cursor:pointer;transition:border-color 300ms var(--ease-out),background 300ms var(--ease-out)}
+.fleet-card:hover{background:var(--raised);border-color:var(--faint)}
+.fleet-card.glow{border-color:rgba(233,162,59,.55);box-shadow:0 0 24px rgba(233,162,59,.08)}
+.fleet-name{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600}
+.fleet-name .live-dot{width:6px;height:6px;border-radius:50%;background:var(--faint)}
+.fleet-card.glow .live-dot{background:var(--success);animation:working-pulse 1.6s ease-in-out infinite}
+.fleet-minimap{display:flex;flex-wrap:wrap;gap:5px;margin-top:12px}
+.fleet-sq{width:12px;height:12px;border-radius:3.5px;border:1.6px solid var(--faint)}
+.fleet-sq.done{border-color:transparent;background:#3f7f57}
+.fleet-sq.active{border-color:var(--accent)}
+.fleet-sq.blocked{border-color:transparent;background:var(--danger)}
+.fleet-sq.hot{box-shadow:0 0 8px rgba(233,162,59,.7);border-color:var(--accent)}
+.fleet-agents{display:flex;align-items:center;gap:8px;margin-top:12px;min-height:20px}
+.fleet-agents svg{width:15px;height:15px}
+.fleet-tool{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim);font:400 11.5px/16px var(--mono)}
+.fleet-idle{color:var(--faint);font-size:12px}
+.fleet-back{position:absolute;right:24px;top:24px;z-index:4}
 .runs{position:absolute;right:24px;top:24px;z-index:2;display:flex;flex-direction:column;gap:10px;width:340px;max-width:44vw}
 .run-card{padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 12px 40px #000;cursor:pointer;animation:reveal 500ms var(--ease) both}
 .run-head{display:flex;align-items:center;gap:8px}
@@ -61,7 +84,7 @@
   <nav class="switcher" id="boards" aria-label="Boards" style="display:none"></nav>
   <div class="status"><span id="state"></span><span class="watching">watching</span></div>
 </header>
-<div class="workspace"><aside class="sidebar" id="tree" aria-label="Repository files"><div class="tree-empty">Connecting to the live monitor…</div></aside><section class="primary graph-view" id="graph" aria-label="Plan flow diagram"></section><div class="runs" id="runs"></div></div></div>
+<div class="workspace"><aside class="sidebar" id="tree" aria-label="Repository files"><div class="tree-empty">Connecting to the live monitor…</div></aside><section class="primary graph-view" id="graph" aria-label="Plan flow diagram"></section><div class="runs" id="runs"></div><div class="fleet" id="fleet" aria-label="Fleet view"></div></div></div>
 <div class="toast" id="toast" role="status"></div>
 <script>
 let M=null,lastGraphKey='',graphZoom=1,graphPan={x:0,y:0},graphSize={width:0,height:0},graphNeedsFit=true,panGesture=null
@@ -124,6 +147,26 @@ function renderTree(){
 $('tree').addEventListener('click',e=>{const b=e.target.closest('.tree-row.dir');if(!b)return;const p=b.dataset.path
   if(isFolderOpen(p)){openFolders.delete(p);closedFolders.add(p)}else{closedFolders.delete(p);openFolders.add(p)}
   renderTree();renderTimes()})
+let fleetOn=false,fleetTimer=null
+function showFleet(){fleetOn=true;$('fleet').classList.add('on');refreshFleet();fleetTimer=setInterval(refreshFleet,2000)}
+function hideFleet(){fleetOn=false;$('fleet').classList.remove('on');clearInterval(fleetTimer)}
+async function refreshFleet(){
+  let data=[]
+  try{data=await (await fetch('/fleet')).json()}catch{return}
+  const now=Date.now()
+  $('fleet').innerHTML=`<div class="fleet-head"><h1>Your fleet</h1><span class="fh-sub">${data.length} board${data.length===1?'':'s'} · zoom in on any card</span><span style="margin-left:auto"><button class="btn" type="button" onclick="hideFleet()">Back to ${esc(M.session.project)}</button></span></div>
+  <div class="fleet-grid">${data.map(b=>{
+    const hot=b.activity&&now-b.activity.at<60000
+    const minimap=(b.components||[]).map(c=>`<span class="fleet-sq ${c.status}${c.touchedAt&&now-c.touchedAt<60000?' hot':''}" title="${esc(c.title)}"></span>`).join('')
+    const live=(b.runs||[]).filter(r=>!r.ended)
+    const agents=live.map(r=>{const ic=agentIcon(r.agent);return`<span title="${esc(r.agent)}">${ic?`<svg viewBox="0 0 24 24"><path fill="${agentColor(r.agent)}" d="${ic}"/></svg>`:esc(r.agent[0])}</span>`}).join('')
+    const tool=live.find(r=>r.tool)
+    return`<div class="fleet-card${hot?' glow':''}" onclick="location.href='http://localhost:${b.port}'">
+      <div class="fleet-name"><span class="live-dot"></span>${esc(b.project)}<span style="margin-left:auto;color:var(--faint);font-size:11.5px;font-weight:400">${live.length?live.length+' running':''}</span></div>
+      <div class="fleet-minimap">${minimap||'<span class="fleet-idle">no plan yet — live layer only</span>'}</div>
+      <div class="fleet-agents">${agents}${tool?`<span class="fleet-tool">${esc(tool.tool)}</span>`:hot?`<span class="fleet-tool">${esc(b.activity.file)}</span>`:'<span class="fleet-idle">quiet</span>'}</div>
+    </div>`}).join('')}</div>`
+}
 function renderZero(){
   const feed=(M.recentActivity||[]).slice(0,8).map(a=>`<div class="zero-row"><span class="dot"></span><span class="zf">${esc(a.file)}${a.n>1?` ×${a.n}`:''}</span><span class="za t-ago" data-at="${a.at}"></span></div>`).join('')
   $('graph').innerHTML=`<div class="zero">
@@ -146,7 +189,7 @@ function renderGraph(){
   const seenLinks=new Set(),linkPairs=[]
   for(const p of phases)for(const l of p.links||[]){if(!byId[l])continue;const key=[p.id,l].sort().join('|');if(seenLinks.has(key))continue;seenLinks.add(key);linkPairs.push([byId[l],p])}
   const edges=phases.flatMap(p=>p.needs.map(need=>graphEdge(byId[need],p,pos))).join('')+linkPairs.map(([a,b])=>graphLinkEdge(a,b,pos)).join(''),nodes=phases.map((p,i)=>graphNode(p,i,pos[p.id])).join('')
-  $('graph').innerHTML=`<svg class="graph-grid"><defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#313131"/></pattern></defs><rect width="100%" height="100%" fill="url(#grid)"/></svg><div class="graph-stage" id="graph-stage" onpointerdown="startPan(event)" onpointermove="movePan(event)" onpointerup="endPan(event)" onpointercancel="endPan(event)"><svg class="graph-svg"><title>Plan dependency flow</title><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#313131"/></marker></defs><g class="world" id="world" transform="translate(${graphPan.x} ${graphPan.y}) scale(${graphZoom})">${edges}${nodes}</g></svg></div><div class="canvas-tools"><button class="icon" aria-label="Zoom out" onclick="zoomBy(.85)"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button><span class="zoom" id="zoom">${Math.round(graphZoom*100)}%</span><button class="icon" aria-label="Zoom in" onclick="zoomBy(1.18)"><svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg></button><span class="divider"></span><button class="icon" aria-label="Fit diagram" onclick="fitGraph()"><svg viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5"/></svg></button></div>${isSkeletonPlan()?`<div class="firstrun"><p><strong>This plan is still a skeleton.</strong> Your agent draws the real map: copy the prompt, paste it to Claude Code or Codex in this repo, and the board fills in as PLAN.md is written.</p><button class="btn accent" type="button" onclick="copyBackfill()">Copy backfill prompt</button></div>`:''}<div class="canvas-hint"><span class="hint"><span class="key">click</span>${openGraphDetails.size?'Show or hide tasks':'Show tasks below node'}</span><span class="hint"><span class="key">drag</span>Move canvas</span><span class="hint"><span class="key">⌘</span>Scroll to zoom</span></div>`
+  $('graph').innerHTML=`<svg class="graph-grid"><defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#313131"/></pattern></defs><rect width="100%" height="100%" fill="url(#grid)"/></svg><div class="graph-stage" id="graph-stage" onpointerdown="startPan(event)" onpointermove="movePan(event)" onpointerup="endPan(event)" onpointercancel="endPan(event)"><svg class="graph-svg"><title>Plan dependency flow</title><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#313131"/></marker></defs><g class="world" id="world" transform="translate(${graphPan.x} ${graphPan.y}) scale(${graphZoom})">${edges}${nodes}</g></svg></div><div class="canvas-tools"><button class="icon" aria-label="Zoom out" onclick="zoomBy(.85)"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button><span class="zoom" id="zoom">${Math.round(graphZoom*100)}%</span><button class="icon" aria-label="Zoom in" onclick="zoomBy(1.18)"><svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg></button><span class="divider"></span><button class="icon" aria-label="Fleet view" title="Fleet — all boards" onclick="showFleet()"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button><button class="icon" aria-label="Fit diagram" onclick="fitGraph()"><svg viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M20 15v5h-5M4 15v5h5"/></svg></button></div>${isSkeletonPlan()?`<div class="firstrun"><p><strong>This plan is still a skeleton.</strong> Your agent draws the real map: copy the prompt, paste it to Claude Code or Codex in this repo, and the board fills in as PLAN.md is written.</p><button class="btn accent" type="button" onclick="copyBackfill()">Copy backfill prompt</button></div>`:''}<div class="canvas-hint"><span class="hint"><span class="key">click</span>${openGraphDetails.size?'Show or hide tasks':'Show tasks below node'}</span><span class="hint"><span class="key">drag</span>Move canvas</span><span class="hint"><span class="key">⌘</span>Scroll to zoom</span></div>`
   $('graph-stage').addEventListener('wheel',onGraphWheel,{passive:false});if(graphNeedsFit){graphNeedsFit=false;requestAnimationFrame(fitGraph)}
 }
 function graphDetailHeight(p){const list=kids(p.id),openRows=list.filter(graphTaskIsOpen).reduce((a,t)=>a+16+Math.max(graphTaskDetails(t).rows.length,5)*20,0);const sessN=(M.runs||[]).filter(r=>r.componentId===p.id).reduce((a,r)=>a+(r.todos||[]).length,0)+((p.touchedAt&&Date.now()-p.touchedAt<60000&&!list.some(k=>k.status==='active'||k.status==='blocked'))?1:0);return (list.length+sessN)?(list.length+sessN)*44+Math.max(0,list.length+sessN-1)+openRows:64}
@@ -194,7 +237,7 @@ function toggleGraphNode(id,event){event?.stopPropagation();openGraphDetails.has
 function toggleGraphTask(id,event){event?.stopPropagation();const task=M.plan.find(n=>n.id===id&&n.level==='task');if(!task)return;if(graphTaskIsOpen(task)){openGraphTasks.delete(id);closedGraphTasks.add(id)}else{closedGraphTasks.delete(id);openGraphTasks.add(id)}graphNeedsFit=true;renderGraph();renderTimes()}
 function updateTransform(){const world=$('world');if(world)world.setAttribute('transform',`translate(${graphPan.x} ${graphPan.y}) scale(${graphZoom})`);if($('zoom'))$('zoom').textContent=`${Math.round(graphZoom*100)}%`}
 function fitGraph(){const stage=$('graph-stage');if(!stage||!graphSize.width)return;const box=stage.getBoundingClientRect();graphZoom=Math.max(.45,Math.min(1.2,(box.width-128)/graphSize.width,(box.height-128)/graphSize.height));graphPan={x:(box.width-graphSize.width*graphZoom)/2,y:(box.height-graphSize.height*graphZoom)/2};updateTransform()}
-function zoomBy(factor,origin){const stage=$('graph-stage');if(!stage)return;const box=stage.getBoundingClientRect(),point=origin||{x:box.width/2,y:box.height/2},next=Math.max(.4,Math.min(1.8,graphZoom*factor)),wx=(point.x-graphPan.x)/graphZoom,wy=(point.y-graphPan.y)/graphZoom;graphPan={x:point.x-wx*next,y:point.y-wy*next};graphZoom=next;updateTransform()}
+function zoomBy(factor,origin){const stage=$('graph-stage');if(!stage)return;if(factor<1&&graphZoom<=.401&&!fleetOn){showFleet();return}const box=stage.getBoundingClientRect(),point=origin||{x:box.width/2,y:box.height/2},next=Math.max(.4,Math.min(1.8,graphZoom*factor)),wx=(point.x-graphPan.x)/graphZoom,wy=(point.y-graphPan.y)/graphZoom;graphPan={x:point.x-wx*next,y:point.y-wy*next};graphZoom=next;updateTransform()}
 function onGraphWheel(e){e.preventDefault();const box=e.currentTarget.getBoundingClientRect();if(e.metaKey||e.ctrlKey)zoomBy(e.deltaY<0?1.08:.92,{x:e.clientX-box.left,y:e.clientY-box.top});else{graphPan.x-=e.deltaX;graphPan.y-=e.deltaY;updateTransform()}}
 function startPan(e){if(e.target.closest('.gnode,.graph-detail'))return;const stage=$('graph-stage');stage.setPointerCapture(e.pointerId);stage.classList.add('dragging');panGesture={id:e.pointerId,x:e.clientX,y:e.clientY,panX:graphPan.x,panY:graphPan.y}}
 function movePan(e){if(!panGesture||panGesture.id!==e.pointerId)return;graphPan={x:panGesture.panX+e.clientX-panGesture.x,y:panGesture.panY+e.clientY-panGesture.y};updateTransform()}

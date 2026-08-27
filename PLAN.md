@@ -56,6 +56,21 @@ files: [bin/**, public/**]
 - [x] Pin runs to components so the map glows where work happens {#runs-pin}
   by: claude
 
+## See the whole fleet {#fleet}
+tech: /summary + /fleet aggregation; zoom-out altitude with live repo cards
+needs: [runs]
+links: [map]
+files: [bin/**, public/**]
+- [x] Zoom out past the map into the fleet view {#fleet-altitude}
+  by: claude
+  tech: repo cards — mini status map, live glow, agents present, current tool
+- [ ] Draw each session's trail across the components it visited {#fleet-trails}
+  from: agent
+  tech: run.path recording already landed; needs the fading polyline renderer
+- [ ] Show handoffs when one session picks up where another stopped {#fleet-handoffs}
+  from: agent
+  tech: same component, end-to-start within 10 min — pulse between agent marks
+
 ## Ship to GitHub and npm {#ship}
 needs: [map, explorer]
 files: [README.md, docs/**, package.json]
@@ -96,3 +111,4 @@ files: [README.md, docs/**, package.json]
 - 2026-08-23: run foreground, map as stage — hooks adapter is core (the 30-minute question is the product); file spine stays the fallback for hook-less agents
 - 2026-08-23: README leads with the moment agenttrail solves (returning to a long agent run and knowing exactly where it is), proves it with the live demo, then earns trust before exposing the full spec
 - 2026-08-23: discovery position is "a local observability layer and live project map for AI coding agents"; distinguish it from LLM trace and cost dashboards with current plans, tool calls, file changes, progress, and revisions, using direct definitions and repository topics instead of keyword stuffing
+- 2026-08-27: infinity map scoped as altitudes, not canvas soup — fleet (parallel agents) > board > capsules; zoom is the switcher; data-flow edges deferred until observable
