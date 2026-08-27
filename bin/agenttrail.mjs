@@ -282,6 +282,7 @@ function saveState() {
   } catch {}
 }
 loadState()
+stateDirty = true // boot save: registers this repo for `agenttrail up`
 setInterval(saveState, 15000).unref()
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stateDirty = true; saveState(); process.exit(0) })
 
