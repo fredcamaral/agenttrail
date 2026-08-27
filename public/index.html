@@ -51,7 +51,7 @@ body.hide-runs .runs,body.hide-runs .task-capsule.sess{display:none!important}
 .icon.ov-off{opacity:.35}
 .gnode .file-dot{rx:2.5;fill:var(--raised);stroke:var(--line);stroke-width:1}
 .gnode .file-dot.hot{stroke:var(--accent);fill:#2e220f}
-.gnode .file-label{fill:var(--dim);font:400 9.5px var(--mono)}
+.gnode .file-label{fill:var(--dim);font:400 10.5px var(--mono)}
 .gnode .file-label.hot{fill:var(--accent)}
 .minimap{position:absolute;right:24px;bottom:24px;z-index:2;border:1px solid var(--line);border-radius:10px;background:rgba(24,24,24,.92);box-shadow:0 12px 40px #000;cursor:pointer}
 .minimap svg{display:block}
@@ -272,7 +272,7 @@ function renderGraph(){
   renderMinimap();applyOverlays();$('graph-stage').addEventListener('wheel',onGraphWheel,{passive:false});if(graphNeedsFit){graphNeedsFit=false;requestAnimationFrame(fitGraph)}
 }
 function graphDetailHeight(p){const list=kids(p.id),openRows=list.filter(graphTaskIsOpen).reduce((a,t)=>a+16+Math.max(graphTaskDetails(t).rows.length,5)*20,0);const sessN=(M.runs||[]).filter(r=>r.componentId===p.id).reduce((a,r)=>a+(r.todos||[]).length,0)+((p.touchedAt&&Date.now()-p.touchedAt<60000&&!list.some(k=>k.status==='active'||k.status==='blocked'))?1:0);return (list.length+sessN)?(list.length+sessN)*44+Math.max(0,list.length+sessN-1)+openRows:64}
-function graphNodeMetrics(p){const nodeW=400;let nodeH=128;if(fileMode&&(p.filesList||[]).length)nodeH=112+Math.ceil(Math.min(p.filesList.length,24)/6)*22+14;if(!openGraphDetails.has(ns(p.id)))return{w:nodeW,h:nodeH,nodeW,nodeH,detailW:0,detailH:0};const detailW=400,detailH=graphDetailHeight(p);return{w:detailW,h:nodeH+24+detailH,nodeW,nodeH,detailW,detailH}}
+function graphNodeMetrics(p){const nodeW=400;let nodeH=128;if(fileMode&&(p.filesList||[]).length)nodeH=110+Math.ceil(Math.min(p.filesList.length,8)/2)*24+(p.filesList.length>8?30:10);if(!openGraphDetails.has(ns(p.id)))return{w:nodeW,h:nodeH,nodeW,nodeH,detailW:0,detailH:0};const detailW=400,detailH=graphDetailHeight(p);return{w:detailW,h:nodeH+24+detailH,nodeW,nodeH,detailW,detailH}}
 function graphEdge(source,target,pos){if(!source||!pos[source.id]||!pos[target.id])return'';const a=pos[source.id],b=pos[target.id],x1=a.nodeX+a.nodeW,y1=a.nodeY+a.nodeH/2,x2=b.nodeX,y2=b.nodeY+b.nodeH/2,bend=Math.max(48,(x2-x1)/2),active=source.status==='active'||target.status==='active';return`<path class="edge ${active?'active':''}" d="M${x1} ${y1}C${x1+bend} ${y1} ${x2-bend} ${y2} ${x2} ${y2}" marker-end="url(#arrow)"/>`}
 function graphLinkEdge(a,b,pos){const A=pos[a.id],B=pos[b.id];if(!A||!B)return''
   let x1,y1,x2,y2,d
@@ -302,21 +302,25 @@ function nodeAgentChips(p,w){const names=[...new Set(M.plan.filter(n=>n.parent==
     const mark=icon?`<g transform="translate(${cx-6.5} ${19.5}) scale(0.5417)"><path fill="${c}" d="${icon}"/></g>`:`<text x="${cx}" y="30" text-anchor="middle" fill="${c}" font-size="11" font-weight="700" font-family="var(--font)">${agentGlyph(n)}</text>`
     return`<g>${mark}<title>${esc(n)}</title></g>`}).join('')}
 function fileConstellation(p,w){
-  const files=(p.filesList||[]).slice(0,24)
+  const files=(p.filesList||[]).slice()
   if(!files.length)return''
   const hot=M.hotFiles||{}
+  const isHot=f=>hot[f]&&Date.now()-hot[f]<60000
+  files.sort((a,b)=>(hot[b]||0)-(hot[a]||0))
+  const shown=files.slice(0,8),rest=files.length-shown.length
   const run=(M.runs||[]).find(r=>!r.ended&&r.componentId===p.id)
-  let out='',hottest=null,hx=0,hy=0
-  files.forEach((f,i)=>{
-    const col=i%6,row=Math.floor(i/6),x=16+col*62,y=104+row*22
-    const isHot=hot[f]&&Date.now()-hot[f]<60000
-    if(isHot&&(!hottest||hot[f]>hot[hottest]))({}),hottest=f,hx=x,hy=y
-    out+=`<rect class="file-dot${isHot?' hot':''}" x="${x}" y="${y}" width="14" height="14"><title>${esc(f)}</title></rect>`
+  const hotShown=shown.filter(isHot),hottest=hotShown.length?hotShown.reduce((a,b)=>hot[a]>=hot[b]?a:b):null
+  let out=''
+  shown.forEach((f,i)=>{
+    const col=i%2,row=Math.floor(i/2),x=16+col*186,y=104+row*24
+    const h=isHot(f)
     const base=f.split('/').pop()
-    out+=`<text class="file-label${isHot?' hot':''}" x="${x+18}" y="${y+11}">${esc(base.length>7?base.slice(0,6)+'…':base)}</text>`
+    const name=base.length>21?base.slice(0,12)+'…'+base.slice(-7):base
+    out+=`<rect class="file-dot${h?' hot':''}" x="${x}" y="${y}" width="13" height="13"><title>${esc(f)}</title></rect>`
+    out+=`<text class="file-label${h?' hot':''}" x="${x+19}" y="${y+11}">${esc(name)}</text>`
+    if(f===hottest&&run){const ic=agentIcon(run.agent);if(ic)out+=`<g transform="translate(${x} ${y-15}) scale(0.5)"><path fill="${agentColor(run.agent)}" d="${ic}"/></g>`}
   })
-  if(hottest&&run){const ic=agentIcon(run.agent)
-    if(ic)out+=`<g transform="translate(${hx+1} ${hy-14}) scale(0.5)"><path fill="${agentColor(run.agent)}" d="${ic}"/></g>`}
+  if(rest>0)out+=`<text class="file-label" x="16" y="${104+Math.ceil(shown.length/2)*24+16}" style="opacity:.55">+ ${rest} more files</text>`
   return out
 }
 function handoffLabel(p,w,h){
