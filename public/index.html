@@ -322,26 +322,44 @@ function fileIcon(f){
   if(['sh','bash','zsh','fish'].includes(e))return FILE_ICONS.shell
   return FILE_ICONS.file
 }
+function fileFamily(f){
+  const base=f.split('/').pop(),di=base.lastIndexOf('.')
+  const ext=di>0?base.slice(di):'',stem=di>0?base.slice(0,di):base
+  const toks=stem.split(/[-_.]/)
+  while(toks.length>1&&/^(\d+x?\d*|dark|light|black|white|master|small|large|\dx|[0-9a-f]{6,})$/i.test(toks[toks.length-1]))toks.pop()
+  return toks.join('-')+ext
+}
 function fileConstellation(p,w){
   const files=(p.filesList||[]).slice()
   if(!files.length)return''
   const hot=M.hotFiles||{}
   const isHot=f=>hot[f]&&Date.now()-hot[f]<60000
-  files.sort((a,b)=>(hot[b]||0)-(hot[a]||0))
-  const shown=files.slice(0,8),rest=files.length-shown.length
+  // cluster variant families (3+ files sharing a stem) into one distinct row
+  const fam={}
+  for(const f of files)(fam[fileFamily(f)]=fam[fileFamily(f)]||[]).push(f)
+  const items=[]
+  for(const[key,members]of Object.entries(fam)){
+    if(members.length>=3){
+      const di=key.lastIndexOf('.'),label=(di>0?key.slice(0,di)+'-*'+key.slice(di):key+'-*')
+      items.push({label:`${label}`,count:members.length,files:members,heat:Math.max(...members.map(f=>hot[f]||0)),hot:members.some(isHot),icon:members[0]})
+    }else for(const f of members){
+      const base=f.split('/').pop()
+      items.push({label:base.length>21?base.slice(0,12)+'…'+base.slice(-7):base,count:1,files:[f],heat:hot[f]||0,hot:isHot(f),icon:f})
+    }
+  }
+  items.sort((a,b)=>b.heat-a.heat)
+  const shown=items.slice(0,8)
+  const restFiles=items.slice(8).reduce((a,x)=>a+x.count,0)
   const run=(M.runs||[]).find(r=>!r.ended&&r.componentId===p.id)
-  const hotShown=shown.filter(isHot),hottest=hotShown.length?hotShown.reduce((a,b)=>hot[a]>=hot[b]?a:b):null
+  const hottest=shown.filter(x=>x.hot).sort((a,b)=>b.heat-a.heat)[0]
   let out=''
-  shown.forEach((f,i)=>{
+  shown.forEach((it,i)=>{
     const col=i%2,row=Math.floor(i/2),x=16+col*186,y=104+row*24
-    const h=isHot(f)
-    const base=f.split('/').pop()
-    const name=base.length>21?base.slice(0,12)+'…'+base.slice(-7):base
-    out+=`<g class="file-ic${h?' hot':''}" transform="translate(${x-1} ${y-1}) scale(0.62)">${fileIcon(f)}<title>${esc(f)}</title></g>`
-    out+=`<text class="file-label${h?' hot':''}" x="${x+19}" y="${y+11}">${esc(name)}</text>`
-    if(f===hottest&&run){const ic=agentIcon(run.agent);if(ic)out+=`<g transform="translate(${x} ${y-15}) scale(0.5)"><path fill="${agentColor(run.agent)}" d="${ic}"/></g>`}
+    out+=`<g class="file-ic${it.hot?' hot':''}" transform="translate(${x-1} ${y-1}) scale(0.62)">${fileIcon(it.icon)}<title>${esc(it.files.join('\n'))}</title></g>`
+    out+=`<text class="file-label${it.hot?' hot':''}" x="${x+19}" y="${y+11}">${esc(it.label)}${it.count>1?` <tspan style="opacity:.6">×${it.count}</tspan>`:''}</text>`
+    if(it===hottest&&run){const ic=agentIcon(run.agent);if(ic)out+=`<g transform="translate(${x} ${y-15}) scale(0.5)"><path fill="${agentColor(run.agent)}" d="${ic}"/></g>`}
   })
-  if(rest>0)out+=`<text class="file-label" x="16" y="${104+Math.ceil(shown.length/2)*24+16}" style="opacity:.55">+ ${rest} more files</text>`
+  if(restFiles>0)out+=`<text class="file-label" x="16" y="${104+Math.ceil(shown.length/2)*24+16}" style="opacity:.55">+ ${restFiles} more files</text>`
   return out
 }
 function handoffLabel(p,w,h){
