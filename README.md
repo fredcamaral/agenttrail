@@ -26,8 +26,10 @@ Start an agent, walk away, and come back to this:
 
 ```bash
 cd your-repo
-npx agenttrail --open
+npx agenttrail
 ```
+
+The browser opens on the live board. On a repo with no plan it offers the full setup inline — one y/n, and the backfill prompt lands on your clipboard. Hooks are only wired with your consent. After a reboot, `npx agenttrail up` relaunches every board you've ever run; `npx agenttrail autostart` makes a repo's board start at login and self-heal.
 
 That's it. No account, no global install, no telemetry. agenttrail opens on localhost and starts watching the repo.
 

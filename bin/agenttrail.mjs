@@ -16,21 +16,52 @@ const argv = process.argv.slice(2)
 let cmd = null
 let repo = process.cwd()
 let port = 5330
-let openBrowser = false
+let openBrowser = process.stdout.isTTY ? true : false
+let noOpen = false
 let hooksOnly = false
+let assumeYes = false
+let removeFlag = false
+let printFlag = false
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i]
   if (a === 'init') cmd = 'init'
   else if (a === 'hook') cmd = 'hook'
   else if (a === '--port') port = parseInt(argv[++i], 10)
   else if (a === '--open') openBrowser = true
+  else if (a === '--no-open') { noOpen = true; openBrowser = false }
+  else if (a === '--yes' || a === '-y') assumeYes = true
+  else if (a === 'up') cmd = 'up'
+  else if (a === 'autostart') cmd = 'autostart'
+  else if (a === '--remove') removeFlag = true
+  else if (a === '--print') printFlag = true
   else if (a === '--hooks-only') hooksOnly = true
   else repo = path.resolve(a)
 }
 const planPath = path.join(repo, 'PLAN.md')
 const atDir = path.join(repo, '.agenttrail')
 
-if (cmd === 'init') { hooksOnly ? installHooks() : init(); process.exit(0) }
+async function askYesNo(q) {
+  if (assumeYes || !process.stdin.isTTY) return true
+  const rl = (await import('node:readline')).createInterface({ input: process.stdin, output: process.stdout })
+  const ans = await new Promise(r => rl.question(q, r))
+  rl.close()
+  return !/^n/i.test(ans.trim())
+}
+function copyToClipboard(text) {
+  try {
+    const cp = require('node:child_process')
+  } catch {}
+  return import('node:child_process').then(cp => new Promise(res => {
+    const cmd = process.platform === 'darwin' ? 'pbcopy' : 'xclip'
+    const args = process.platform === 'darwin' ? [] : ['-selection', 'clipboard']
+    const p = cp.spawn(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'] })
+    p.on('error', () => res(false)); p.on('close', () => res(true))
+    p.stdin.end(text)
+  })).catch(() => false)
+}
+if (cmd === 'init') { hooksOnly ? installHooks() : await init(); process.exit(0) }
+if (cmd === 'up') { await upAll(); process.exit(0) }
+if (cmd === 'autostart') { autostart(); process.exit(0) }
 if (cmd === 'hook') { await relayHook(); process.exit(0) }
 
 // reads a claude code hook payload on stdin and fans it out to local daemons;
@@ -44,6 +75,19 @@ async function relayHook() {
   await Promise.allSettled(ports.map(p => fetch(`http://127.0.0.1:${p}/hook`, {
     method: 'POST', body: raw, signal: AbortSignal.timeout(400),
   }).catch(() => {})))
+  // SessionStart: ask daemons for a staleness nudge — stdout lands in the agent's context
+  try {
+    const ev = JSON.parse(raw)
+    if (ev.hook_event_name === 'SessionStart' && ev.cwd) {
+      for (const p of ports) {
+        try {
+          const r = await fetch(`http://127.0.0.1:${p}/nudge?cwd=${encodeURIComponent(ev.cwd)}`, { signal: AbortSignal.timeout(400) })
+          const t = (await r.text()).trim()
+          if (t) { console.log(t); break }
+        } catch {}
+      }
+    }
+  } catch {}
 }
 
 // ---------- PLAN.md parser (convention v2: components, owner-first names) ----------
@@ -234,7 +278,7 @@ function saveState() {
   stateDirty = false
   try {
     fs.mkdirSync(path.dirname(stateFile), { recursive: true })
-    fs.writeFileSync(stateFile, JSON.stringify({ activity, recentActivity, compTouched, compRecent, runs, fileHeat }))
+    fs.writeFileSync(stateFile, JSON.stringify({ repoPath: repo, port, activity, recentActivity, compTouched, compRecent, runs, fileHeat }))
   } catch {}
 }
 loadState()
@@ -295,6 +339,36 @@ function hotFiles() {
   for (const [f, at] of Object.entries(fileHeat)) if (now - at < 60000) out[f] = at
   return out
 }
+function lintPlan() {
+  const out = []
+  const comps = parsed.nodes.filter(n => n.level === 'component')
+  const tasks = parsed.nodes.filter(n => n.level === 'task')
+  if (!planText.length || (comps.length === 1 && tasks.length <= 1)) return out
+  const ids = new Set()
+  for (const n of parsed.nodes) { if (ids.has(n.id)) out.push(`duplicate id {#${n.id}}`); ids.add(n.id) }
+  const compIds = new Set(comps.map(c => c.id))
+  for (const c of comps) {
+    for (const e of [...c.needs, ...c.links]) if (!compIds.has(e)) out.push(`${c.id}: edge to unknown component "${e}"`)
+    if (!c.files.length) out.push(`${c.id}: no files: globs — the live layer can't pin work to it`)
+  }
+  for (const t of tasks) if (t.status === 'done' && !t.tech) out.push(`[x] "${t.title}" cites no evidence (tech: line)`)
+  if (comps.length > 9) out.push(`${comps.length} components — over the 5–9 governor, consider merging`)
+  return out.slice(0, 12)
+}
+let hooksInstalledCache = { at: 0, val: false }
+function hooksInstalled() {
+  if (Date.now() - hooksInstalledCache.at < 30000) return hooksInstalledCache.val
+  const val = safeRead(path.join(repo, '.claude', 'settings.local.json')).includes('agenttrail')
+  hooksInstalledCache = { at: Date.now(), val }
+  return val
+}
+function planStaleness() {
+  // code moving while the plan sits untouched — the drift that makes boards look dead
+  if (!activity || !planMtime) return { stale: false }
+  const gap = activity.at - planMtime
+  const fresh = Date.now() - activity.at < 15 * 60e3
+  return gap > 20 * 60e3 && fresh ? { stale: true, minutes: Math.round(gap / 60e3) } : { stale: false }
+}
 function model() {
   if (treeDirty) { tree = buildTree(repo); treeDirty = false }
   return {
@@ -304,6 +378,7 @@ function model() {
     planTitle: parsed.title,
     hasPlan: planText.length > 0, treeTruncated,
     activity, recentActivity, planMtime, handoffs, hotFiles: hotFiles(),
+    planStale: planStaleness(), lints: lintPlan(), hooksInstalled: hooksInstalled(),
     now: Date.now(),
   }
 }
@@ -456,6 +531,13 @@ const server = http.createServer((req, res) => {
   } else if (u.pathname === '/tree') {
     if (treeDirty) { tree = buildTree(repo); treeDirty = false }
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ tree, treeTruncated }))
+  } else if (u.pathname === '/nudge') {
+    const cwd = u.searchParams.get('cwd') || ''
+    const st = planStaleness()
+    const mine = cwd === repo || cwd.startsWith(repo + path.sep)
+    res.writeHead(200, { 'content-type': 'text/plain' }).end(mine && st.stale
+      ? `Note from agenttrail: PLAN.md in this repo is ${st.minutes} minutes behind the code. Re-verify task statuses against what you and other sessions actually changed, mark your current task [~], and keep files: globs current.`
+      : '')
   } else if (u.pathname === '/tree-of') {
     const p = parseInt(u.searchParams.get('port'), 10)
     fetch(`http://127.0.0.1:${p}/tree`, { signal: AbortSignal.timeout(1500) })
@@ -493,18 +575,33 @@ function listenWithFallback(tries = 20) {
   })
   server.listen(port, '127.0.0.1', onListen)
 }
+const BACKFILL_PROMPT = 'Read the "agenttrail plan convention" section in CLAUDE.md or AGENTS.md. Then study this repo in trust order — the code and directory layout first (what exists), git log for what is actually recent, decision logs and any in-progress build/handoff docs for what is in flight, and README/roadmap prose LAST and only for open intent (founding docs rot; cross-check their claims against git log) — and rewrite PLAN.md as the real map of this codebase: components with stable {#id}s, needs:/links: edges between them, files: globs for the paths each owns, and verb-led concrete titles with tech: sublines. Keep it to 5-9 components no matter how big the repo — a component is a part one agent could own for a session, with its own doneness and at least one edge; anything smaller is a task inside one. Verify every status against the CODE, not the docs — READMEs and roadmaps rot; mark [x] only after finding the implementing source or artifact, and cite that evidence on its tech: line (e.g. tech: TurnView.swift) so a human can audit every tick; if you cannot find evidence, leave it unchecked and say so in the decisions note. Statuses must be honest — [x] only for what verifiably exists, [~] only for what you are working on right now, everything else [ ]. Tag open tasks with an indented from: line naming provenance — from: agent when an in-progress build/handoff doc or your own declared intent claims it imminently, from: roadmap when sourced only from planning docs; omit when unsure. Record the backfill under ## decisions.'
+async function firstRunFlow() {
+  if (planText.length || !process.stdin.isTTY) return
+  console.log('\nno PLAN.md here yet — the live layer works now; the map needs a plan.')
+  if (await askYesNo('set up the plan convention (PLAN.md skeleton + agent instructions + local hooks)? [Y/n] ')) {
+    await init()
+    planText = safeRead(planPath); parsed = parsePlan(planText); rebuildMatchers(); planMtime = statMtime(planPath)
+    const copied = await copyToClipboard(BACKFILL_PROMPT)
+    console.log(copied
+      ? 'backfill prompt is on your clipboard — paste it to your agent in this repo and the map draws itself.'
+      : 'paste this to your agent in this repo:\n\n  ' + BACKFILL_PROMPT)
+    broadcast()
+  }
+}
 function onListen() {
   console.log(`agenttrail · ${session.project} · http://localhost:${port}`)
   if (!planText) console.log('no PLAN.md found — run `agenttrail init` in the repo to scaffold one')
-  if (openBrowser) {
+  if (openBrowser && !noOpen) {
     const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open'
     import('node:child_process').then(cp => cp.spawn(opener, [`http://localhost:${port}`], { stdio: 'ignore', detached: true }))
   }
+  firstRunFlow()
 }
 listenWithFallback()
 
 // ---------- init ----------
-function init() {
+async function init() {
   fs.mkdirSync(atDir, { recursive: true })
   if (!fs.existsSync(planPath)) {
     fs.writeFileSync(planPath, `# ${path.basename(repo)}
@@ -528,7 +625,7 @@ tech: scaffolding
       console.log(`appended agenttrail convention block to ${name}`)
     }
   }
-  installHooks()
+  if (await askYesNo('wire Claude Code hooks into .claude/settings.local.json (gitignored, local only)? [Y/n] ')) installHooks()
   const gi = path.join(repo, '.gitignore')
   const giText = safeRead(gi)
   if (!giText.includes('.agenttrail')) fs.appendFileSync(gi, (giText.endsWith('\n') || !giText ? '' : '\n') + '.agenttrail/\n')
@@ -557,4 +654,52 @@ function installHooks() {
     fs.writeFileSync(sp, JSON.stringify(cfg, null, 2) + '\n')
     console.log(`wired ${added} claude code hooks into .claude/settings.local.json (live tool + todo stream)`)
   }
+}
+
+// ---------- lifecycle: resurrect known boards / start at login ----------
+async function upAll() {
+  const dir = path.join(os.homedir(), '.agenttrail')
+  let entries = []
+  try { entries = fs.readdirSync(dir).filter(f => f.endsWith('.json')) } catch {}
+  const known = []
+  for (const f of entries) {
+    try {
+      const st = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'))
+      if (st.repoPath && fs.existsSync(st.repoPath)) known.push({ repo: st.repoPath, port: st.port || 5330 })
+    } catch {}
+  }
+  if (!known.length) { console.log('no known repos yet — run agenttrail in a repo first'); return }
+  const cp = await import('node:child_process')
+  for (const k of known) {
+    const live = await fetch(`http://127.0.0.1:${k.port}/whoami`, { signal: AbortSignal.timeout(300) }).then(r => r.json()).catch(() => null)
+    if (live) { console.log(`already up: ${k.repo} (:${k.port})`); continue }
+    const child = cp.spawn(process.execPath, [fileURLToPath(import.meta.url), k.repo, '--port', String(k.port), '--no-open'], { detached: true, stdio: 'ignore' })
+    child.unref()
+    console.log(`started: ${k.repo} (:${k.port})`)
+  }
+}
+function autostart() {
+  const self = fileURLToPath(import.meta.url)
+  if (process.platform === 'darwin') {
+    const label = 'dev.agenttrail.' + crypto.createHash('sha1').update(repo).digest('hex').slice(0, 8)
+    const plist = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>\n  <key>Label</key><string>${label}</string>\n  <key>ProgramArguments</key><array><string>${process.execPath}</string><string>${self}</string><string>${repo}</string><string>--port</string><string>${String(port)}</string><string>--no-open</string></array>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n</dict></plist>\n`
+    const dest = path.join(os.homedir(), 'Library', 'LaunchAgents', label + '.plist')
+    if (printFlag) { console.log(plist); return }
+    if (removeFlag) {
+      try { fs.unlinkSync(dest); console.log('removed', dest, '— run: launchctl unload', dest) } catch { console.log('nothing to remove') }
+      return
+    }
+    fs.mkdirSync(path.dirname(dest), { recursive: true })
+    fs.writeFileSync(dest, plist)
+    console.log(`wrote ${dest}\nactivate now:  launchctl load ${dest}\nthe board for ${repo} will start at every login and restart if it dies.`)
+  } else if (process.platform === 'linux') {
+    const name = 'agenttrail-' + crypto.createHash('sha1').update(repo).digest('hex').slice(0, 8)
+    const unit = `[Unit]\nDescription=agenttrail board for ${repo}\n\n[Service]\nExecStart=${process.execPath} ${self} ${repo} --port ${String(port)} --no-open\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n`
+    const dest = path.join(os.homedir(), '.config', 'systemd', 'user', name + '.service')
+    if (printFlag) { console.log(unit); return }
+    if (removeFlag) { try { fs.unlinkSync(dest); console.log('removed', dest) } catch { console.log('nothing to remove') } return }
+    fs.mkdirSync(path.dirname(dest), { recursive: true })
+    fs.writeFileSync(dest, unit)
+    console.log(`wrote ${dest}\nactivate now:  systemctl --user enable --now ${name}`)
+  } else console.log('autostart: macOS and Linux only for now — on Windows, add "agenttrail up" to your startup apps')
 }
