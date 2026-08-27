@@ -122,6 +122,12 @@ const clients = new Set()
 // matter what its checkbox says — that is how "revising done work" stays visible.
 const compTouched = {} // component id -> last matching write ts
 const compRecent = {} // component id -> [{file, at}] newest first — feeds capsule work lines
+const fileHeat = {} // file -> last touch ts, capped
+function heatFile(file, at) {
+  fileHeat[file] = at
+  const keys = Object.keys(fileHeat)
+  if (keys.length > 600) { keys.sort((a, b) => fileHeat[a] - fileHeat[b]); for (const k of keys.slice(0, 100)) delete fileHeat[k] }
+}
 function globToRe(g) {
   if (!/[*?]/.test(g)) return new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&') + '(/|$)')
   const esc = g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*')
@@ -146,6 +152,7 @@ function touchComponents(file, at) {
 // The run is the foreground: what the agent is doing right now — current
 // todo, streaming tool line, recent calls — pinned to a component on the map.
 const runs = {} // session id -> run
+const handoffs = [] // {c, from, to, at} — one session picks up where another stopped
 function runFor(id, cwd) {
   return runs[id] || (runs[id] = { id, agent: 'claude', cwd, startedAt: Date.now(), lastEventAt: Date.now(), todos: [], currentTool: null, recentTools: [], componentId: null, ended: false })
 }
@@ -182,10 +189,15 @@ function handleHookEvent(ev) {
     }
     const rel = relToRepo(ev.tool_input && (ev.tool_input.file_path || ev.tool_input.notebook_path))
     if (rel) {
+      heatFile(rel, Date.now())
       touchComponents(rel, Date.now())
       activity = { file: rel, at: Date.now() }
       for (const m of compMatchers) if (m.res.some(re => re.test(rel))) {
-        if (run.componentId !== m.id) (run.path = run.path || []).push({ c: m.id, at: Date.now() })
+        if (run.componentId !== m.id) {
+          (run.path = run.path || []).push({ c: m.id, at: Date.now() })
+          const prev = Object.values(runs).find(r2 => r2.id !== run.id && r2.ended && r2.componentId === m.id && Date.now() - r2.lastEventAt < 10 * 60e3)
+          if (prev) { handoffs.push({ c: m.id, from: prev.agent, to: run.agent, at: Date.now() }); if (handoffs.length > 10) handoffs.shift() }
+        }
         run.componentId = m.id
         if (run.path && run.path.length > 20) run.path.shift()
       }
@@ -214,6 +226,7 @@ function loadState() {
     Object.assign(runs, st.runs || {})
     Object.assign(compTouched, st.compTouched || {})
     Object.assign(compRecent, st.compRecent || {})
+    Object.assign(fileHeat, st.fileHeat || {})
   } catch {}
 }
 function saveState() {
@@ -221,7 +234,7 @@ function saveState() {
   stateDirty = false
   try {
     fs.mkdirSync(path.dirname(stateFile), { recursive: true })
-    fs.writeFileSync(stateFile, JSON.stringify({ activity, recentActivity, compTouched, compRecent, runs }))
+    fs.writeFileSync(stateFile, JSON.stringify({ activity, recentActivity, compTouched, compRecent, runs, fileHeat }))
   } catch {}
 }
 loadState()
@@ -268,15 +281,29 @@ rebuildMatchers()
 function safeRead(p) { try { return fs.readFileSync(p, 'utf8') } catch { return '' } }
 function statMtime(p) { try { return fs.statSync(p).mtimeMs } catch { return null } }
 
+function compFilesFor(id) {
+  const m = compMatchers.find(x => x.id === id)
+  if (!m) return []
+  const out = []
+  const walk = t => { for (const n of t) { if (n.dir) walk(n.children || []); else if (m.res.some(re => re.test(n.path))) out.push(n.path) } }
+  walk(tree)
+  out.sort((a, b) => (fileHeat[b] || 0) - (fileHeat[a] || 0) || a.length - b.length || a.localeCompare(b))
+  return out.slice(0, 24)
+}
+function hotFiles() {
+  const now = Date.now(), out = {}
+  for (const [f, at] of Object.entries(fileHeat)) if (now - at < 60000) out[f] = at
+  return out
+}
 function model() {
   if (treeDirty) { tree = buildTree(repo); treeDirty = false }
   return {
     boards,
     runs: liveRuns(),
-    session, plan: parsed.nodes.map(n => n.level === 'component' ? { ...n, touchedAt: compTouched[n.id] || null, recent: compRecent[n.id] || [] } : n), tree,
+    session, plan: parsed.nodes.map(n => n.level === 'component' ? { ...n, touchedAt: compTouched[n.id] || null, recent: compRecent[n.id] || [], filesList: compFilesFor(n.id) } : n), tree,
     planTitle: parsed.title,
     hasPlan: planText.length > 0, treeTruncated,
-    activity, recentActivity, planMtime,
+    activity, recentActivity, planMtime, handoffs, hotFiles: hotFiles(),
     now: Date.now(),
   }
 }
@@ -288,7 +315,7 @@ function send(obj) {
 function broadcast() { send(model()) }
 // activity ticks carry only what moved — the 600KB tree stays home
 function broadcastTick() {
-  send({ partial: true, runs: liveRuns(), activity, recentActivity, touched: { ...compTouched }, compRecent, now: Date.now() })
+  send({ partial: true, runs: liveRuns(), activity, recentActivity, touched: { ...compTouched }, compRecent, handoffs, hotFiles: hotFiles(), now: Date.now() })
 }
 
 // ---------- watcher ----------
@@ -313,6 +340,7 @@ try {
     treeDirty = true
     stateDirty = true
     activity = { file: f, at: Date.now() }
+    heatFile(f, activity.at)
     touchComponents(f, activity.at)
     if (!recentActivity.length || recentActivity[0].file !== f) recentActivity.unshift(activity)
     else recentActivity[0] = activity

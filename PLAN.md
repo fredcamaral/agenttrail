@@ -67,12 +67,18 @@ files: [bin/**, public/**]
 - [x] Zoom is the detail dial: capsules auto-unfold as the camera closes {#fleet-semantic}
   by: claude
   tech: hysteresis 1.05/0.85; overlay toggles (activity, runs); run cards fly to their component
-- [ ] Draw each session's trail across the components it visited {#fleet-trails}
-  from: agent
-  tech: run.path recording already landed; needs the fading polyline renderer
-- [ ] Show handoffs when one session picks up where another stopped {#fleet-handoffs}
-  from: agent
-  tech: same component, end-to-start within 10 min — pulse between agent marks
+- [x] Draw each session's trail across the components it visited {#fleet-trails}
+  by: claude
+  tech: agent-colored dotted polylines under the edges, dimmed when the session ends
+- [x] Show handoffs when one session picks up where another stopped {#fleet-handoffs}
+  by: claude
+  tech: daemon detects end-to-start ≤10min on a component; card shows from ⇄ to in agent colors
+- [x] Zoom into a component's files {#fleet-l2}
+  by: claude
+  tech: L2 at 150% — files: globs ∩ tree, heat-sorted, agent mark on the hottest file
+- [x] Corner minimap with viewport jump {#fleet-minimap}
+  by: claude
+  tech: overview+detail per the research — status-colored nodes, click to jump
 
 ## Ship to GitHub and npm {#ship}
 needs: [map, explorer]
