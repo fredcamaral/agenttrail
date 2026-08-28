@@ -21,6 +21,7 @@ tech: recursive fs watcher
 links: [explorer]
 files: [bin/**]
 - [x] Notice every file the agent touches {#watch-files}
+  tech: heatFile/touchComponents in bin/agenttrail.mjs
   by: claude
 - [x] Ignore editor droppings and junk folders {#watch-filter}
   tech: tmp/swap filter + .git, node_modules excludes
@@ -34,10 +35,12 @@ files: [public/**, assets/brand/**]
   tech: needs = arrows, links = dashed, deterministic layout
   by: claude
 - [x] Unfold a component into its tasks {#map-capsules}
+  tech: zoomUnfolded + expandedGraphNode in public/index.html
   by: codex
 - [x] Name things for the owner, not the agent {#map-naming}
   tech: convention v2 — verb-led titles + tech: sublines
 - [x] Put the selected logo in the header {#map-logo}
+  tech: .brand mark swap in public/index.html
   by: codex
 - [x] Match the header logo to each theme {#map-theme-logo}
   by: codex
@@ -77,6 +80,7 @@ tech: vs-code-style file tree
 needs: [watcher]
 files: [public/**]
 - [x] Folder tree with live "just touched" accents {#explorer-tree}
+  tech: renderTree + tree-ago in public/index.html
   by: claude
 - [x] Make recent file edits stand out in light mode {#explorer-light-activity}
   by: codex
@@ -98,8 +102,10 @@ files: [bin/**, public/**]
   by: claude
   tech: agenttrail hook (stdin → POST, fail-silent); init merges .claude/settings.json
 - [x] Run cards on the board with the live tool line {#runs-ui}
+  tech: renderRuns in public/index.html
   by: claude
 - [x] Pin runs to components so the map glows where work happens {#runs-pin}
+  tech: run.componentId + obs-ring in public/index.html
   by: claude
 - [x] Explain missing run cards in-product {#runs-explain}
   by: claude
@@ -137,7 +143,9 @@ files: [bin/**, public/**]
 needs: [map, explorer]
 files: [README.md, docs/**, package.json]
 - [x] Public repo and readme {#ship-repo}
+  tech: github.com/sodiumsun/agenttrail + README.md
 - [x] Fresh demo gif of the current look {#ship-gif}
+  tech: docs/demo.gif
   by: claude
 - [x] Publish to npm {#ship-npm}
   by: claude
@@ -147,6 +155,7 @@ files: [README.md, docs/**, package.json]
   from: agent
   tech: live activity feed as the no-plan hero, backfill banner demoted
 - [x] Filmed real-session demo video {#ship-video}
+  tech: docs/demo.gif filmed from live boards
   by: claude
   from: agent
 - [x] One-command first run {#ship-onboard}
