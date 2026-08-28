@@ -39,10 +39,38 @@ files: [public/**, assets/brand/**]
   tech: convention v2 — verb-led titles + tech: sublines
 - [x] Put the selected logo in the header {#map-logo}
   by: codex
+- [x] Match the header logo to each theme {#map-theme-logo}
+  by: codex
+  from: agent
+  tech: automatic header-logo swap in public/index.html
+- [x] Recolor the app icon for dark mode {#map-theme-icon}
+  by: codex
+  from: agent
+  tech: identical rounded-square composition and route mark, rendered in a darker night palette
 - [x] Keep the header compact and the current map in view {#map-frame}
   by: codex
   from: agent
   tech: valid encoded favicon; one-row status rail; viewport-bound app shell
+- [x] Switch the whole app between dark and light {#map-theme}
+  by: codex
+  from: agent
+  tech: persisted top-bar switch + tokenized HTML/SVG surfaces in public/index.html
+- [x] Make the theme switch name its action {#map-theme-label}
+  by: codex
+  from: agent
+  tech: Light in dark mode; Dark in light mode
+- [x] Strengthen completed task colors in light mode {#map-light-complete}
+  by: codex
+  from: agent
+  tech: higher-contrast completion pill + clearer completed-task agent marks
+- [x] Make revising cards prominent in light mode {#map-light-revising}
+  by: codex
+  from: agent
+  tech: warm card tint + stronger orange outline and label
+- [x] Bring running cards forward in light mode {#map-light-running}
+  by: codex
+  from: agent
+  tech: warm active surface + stronger outline + accent-tinted depth
 
 ## Show the repo like an editor {#explorer}
 tech: vs-code-style file tree
@@ -50,6 +78,10 @@ needs: [watcher]
 files: [public/**]
 - [x] Folder tree with live "just touched" accents {#explorer-tree}
   by: claude
+- [x] Make recent file edits stand out in light mode {#explorer-light-activity}
+  by: codex
+  from: agent
+  tech: warm row tint + bright orange edge + semibold activity text
 - [x] Add a repo from the sidebar {#explorer-add-repo}
   tech: + add repo row -> /suggest (known repos + git siblings) -> POST /spawn spawns a sibling daemon
   by: claude
@@ -150,3 +182,5 @@ files: [README.md, docs/**, package.json]
 - 2026-08-27: infinity map scoped as altitudes, not canvas soup — fleet (parallel agents) > board > capsules; zoom is the switcher; data-flow edges deferred until observable
 - 2026-08-27: zoom model doc'd in docs/ZOOM.md — space is zoomable (containment only), work is overlay paint at its address; tasks are Plan-overlay annotations, never zoom destinations; symbols + data-flow deferred
 - 2026-08-27: fleet page retired — the world IS the map; regions LOD from name-card to full board at 30%; tabs and run cards fly the camera instead of navigating; sidebar is multi-root with lazy sibling trees
+- 2026-08-27: light mode is a token-only UI variant — dark stays the default, the top-bar switch persists locally, and no layout or product behavior changes
+- 2026-08-27: theme branding uses one app-icon design — light keeps the colorful original; dark is the same rounded-square composition in a night palette
