@@ -124,7 +124,9 @@ function renderAddSuggestions(){const box=document.getElementById('add-sugg');if
   box.innerHTML=list.map(p=>{const name=p.split('/').pop(),dir=p.slice(0,p.length-name.length)
     return`<button type="button" class="sugg-row" onclick="pickSuggestion(this.dataset.p)" data-p="${esc(p)}"><span class="sugg-name">${esc(name)}</span><span class="sugg-dir">${esc(dir)}</span></button>`}).join('')||(q?`<div class="tree-add-msg">no known repo matches — full path works too</div>`:'')}
 function pickSuggestion(p){const i=document.getElementById('add-path');if(i)i.value=p;submitAddRepo()}
-async function submitAddRepo(){const i=document.getElementById('add-path'),msg=document.getElementById('add-msg');if(!i||!i.value.trim())return
+let addRepoBusy=false
+async function submitAddRepo(){const i=document.getElementById('add-path'),msg=document.getElementById('add-msg');if(!i||!i.value.trim()||addRepoBusy)return
+  addRepoBusy=true;setTimeout(()=>addRepoBusy=false,8000)
   msg.textContent='starting the board…'
   try{const r=await(await fetch('/spawn',{method:'POST',body:JSON.stringify({path:i.value.trim()})})).json()
     if(r.ok&&r.already)msg.textContent='already on the map — flying there';if(r.ok&&r.already)setTimeout(()=>{flyToRegion(r.already);addRepoOpen=false;renderTree()},600)
@@ -270,7 +272,7 @@ function regionCardHtml(b,L){
   const live=(b.runs||[]).filter(r=>!r.ended)
   const sq=b.plan.filter(n=>n.level==='component').map((c,i)=>`<rect x="${40+i*30}" y="${h/2+4}" width="20" height="20" rx="5" fill="${c.status==='done'?'#3f7f57':c.status==='blocked'?'var(--danger)':'none'}" stroke="${c.status==='active'?'var(--accent)':'var(--faint)'}" stroke-width="2.5"/>`).join('')
   const marks=live.map((r,i)=>{const ic=agentIcon(r.agent);return ic?`<g transform="translate(${40+i*34} ${h/2+44}) scale(1.1)"><path fill="${agentColor(r.agent)}" d="${ic}"/></g>`:''}).join('')
-  return`<text x="40" y="${h/2-36}" fill="var(--text)" font-size="44" font-weight="650" font-family="var(--font)" letter-spacing="-1">${esc(b.project)}</text>${sq}${marks}${!b.hasPlan?`<text x="40" y="${h/2+44}" fill="var(--faint)" font-size="16" font-family="var(--font)">live layer only — no plan yet</text>`:''}${live.length?`<text x="${w-40}" y="${h/2-36}" text-anchor="end" fill="var(--dim)" font-size="16" font-family="var(--font)">${live.length} running</text>`:''}`
+  return`<text x="40" y="${h/2-36}" fill="var(--text)" font-size="44" font-weight="650" font-family="var(--font)" letter-spacing="-1">${esc(b.project)}</text>${sq}${marks}${!b.hasPlan?`<text x="40" y="${h/2+44}" fill="var(--faint)" font-size="16" font-family="var(--font)">no map yet — ask your agent: “run npx agenttrail init here”</text>`:''}${live.length?`<text x="${w-40}" y="${h/2-36}" text-anchor="end" fill="var(--dim)" font-size="16" font-family="var(--font)">${live.length} running</text>`:''}`
 }
 const CARD_LOD=0.3
 let _saved=null

@@ -16,6 +16,7 @@ const argv = process.argv.slice(2)
 let cmd = null
 let repo = process.cwd()
 let port = 5330
+const spawningPaths = new Set()
 let openBrowser = process.stdout.isTTY ? true : false
 let noOpen = false
 let hooksOnly = false
@@ -567,7 +568,9 @@ const server = http.createServer((req, res) => {
             } catch {}
           }
           if (already) out = { ok: true, already }
+          else if (spawningPaths.has(p)) out = { ok: true }
           else {
+            spawningPaths.add(p); setTimeout(() => spawningPaths.delete(p), 30000)
             const cp = await import('node:child_process')
             const child = cp.spawn(process.execPath, [fileURLToPath(import.meta.url), p, '--no-open'], { detached: true, stdio: 'ignore' })
             child.unref()
@@ -646,7 +649,15 @@ function onListen() {
   }
   firstRunFlow()
 }
-listenWithFallback()
+async function bootDedup() {
+  const probes = []
+  for (let p = 5330; p < 5345; p++) probes.push(
+    fetch(`http://127.0.0.1:${p}/whoami`, { signal: AbortSignal.timeout(400) }).then(r => r.json()).then(w => w.repoPath === repo ? p : null).catch(() => null))
+  const hit = (await Promise.all(probes)).find(Boolean)
+  if (hit) { console.log(`agenttrail is already running for this repo · http://localhost:${hit}`); process.exit(0) }
+  listenWithFallback()
+}
+bootDedup()
 
 // ---------- init ----------
 async function init() {
