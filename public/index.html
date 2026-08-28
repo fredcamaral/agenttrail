@@ -19,7 +19,12 @@
 .tree-add-form input{width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--raised);color:var(--text);font:400 12px var(--mono)}
 .tree-add-form input:focus{outline:none;border-color:var(--faint)}
 .tree-add-form .row{display:flex;gap:6px}
-.tree-add-msg{color:var(--faint);font-size:11.5px;padding:0 2px}.firstrun{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);z-index:2;display:flex;align-items:center;gap:16px;max-width:640px;padding:14px 20px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 12px 40px #000}.firstrun p{color:var(--dim);font-size:13px;line-height:18px;text-wrap:pretty;margin:0}.firstrun strong{color:var(--text);font-weight:600}.firstrun .btn{flex:none}.firstrun.inline{position:static;transform:none;max-width:none;margin-top:8px}
+.tree-add-msg{color:var(--faint);font-size:11.5px;padding:0 2px}
+.tree-sugg{display:flex;flex-direction:column;gap:2px;max-height:216px;overflow-y:auto}
+.sugg-row{display:flex;flex-direction:column;gap:1px;width:100%;padding:6px 10px;border:0;border-radius:8px;background:transparent;color:var(--text);cursor:pointer;text-align:left;transition:background 150ms var(--ease-out)}
+.sugg-row:hover{background:var(--hover)}
+.sugg-name{font-size:12.5px;font-weight:550}
+.sugg-dir{font:400 10.5px var(--mono);color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.firstrun{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);z-index:2;display:flex;align-items:center;gap:16px;max-width:640px;padding:14px 20px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 12px 40px #000}.firstrun p{color:var(--dim);font-size:13px;line-height:18px;text-wrap:pretty;margin:0}.firstrun strong{color:var(--text);font-weight:600}.firstrun .btn{flex:none}.firstrun.inline{position:static;transform:none;max-width:none;margin-top:8px}
 .zero{display:flex;flex-direction:column;justify-content:center;gap:18px;max-width:600px;min-height:100%;margin:0 auto;padding:48px 32px}
 .zero h1{font-size:24px;line-height:32px;font-weight:600;letter-spacing:-.03em}
 .zero .zero-sub{color:var(--dim);text-wrap:pretty}
@@ -113,6 +118,12 @@ const ns=id=>BP+':'+id
 const expandedRoots=new Set(),treeCache={}
 let addRepoOpen=false,addRepoFocus=false,addSuggestions=[]
 async function openAddRepo(){addRepoOpen=true;addRepoFocus=true;try{addSuggestions=await(await fetch('/suggest')).json()}catch{addSuggestions=[]}renderTree()}
+function renderAddSuggestions(){const box=document.getElementById('add-sugg');if(!box)return
+  const q=(document.getElementById('add-path')?.value||'').trim().toLowerCase()
+  const list=addSuggestions.filter(p=>!q||p.toLowerCase().includes(q)).slice(0,8)
+  box.innerHTML=list.map(p=>{const name=p.split('/').pop(),dir=p.slice(0,p.length-name.length)
+    return`<button type="button" class="sugg-row" onclick="pickSuggestion(this.dataset.p)" data-p="${esc(p)}"><span class="sugg-name">${esc(name)}</span><span class="sugg-dir">${esc(dir)}</span></button>`}).join('')||(q?`<div class="tree-add-msg">no known repo matches — full path works too</div>`:'')}
+function pickSuggestion(p){const i=document.getElementById('add-path');if(i)i.value=p;submitAddRepo()}
 async function submitAddRepo(){const i=document.getElementById('add-path'),msg=document.getElementById('add-msg');if(!i||!i.value.trim())return
   msg.textContent='starting the board…'
   try{const r=await(await fetch('/spawn',{method:'POST',body:JSON.stringify({path:i.value.trim()})})).json()
@@ -166,6 +177,7 @@ function renderConnectionError(){
 }
 function isFolderOpen(p){if(closedFolders.has(p))return false;if(openFolders.has(p))return true;return lastReveal.has(p)}
 function renderTree(){
+  if(addRepoOpen&&document.getElementById('add-path'))return
   const boards=boardsAll()
   if(!boards.length){$('tree').innerHTML='<div class="tree-empty">Connecting to the live monitor…</div>';return}
   if(!expandedRoots.size&&M)expandedRoots.add(M.port)
@@ -175,10 +187,10 @@ function renderTree(){
     html+=`<button class="tree-row dir root ${open?'open':''}" type="button" data-root="${b.port}" style="padding-left:8px;min-height:28px"><span class="tree-chev"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></span><span class="tree-name" style="font-weight:600;color:var(--text)">${esc(b.project)}</span></button>`
     if(open)html+=renderRootTree(b)
   }
-  html+=addRepoOpen?`<div class="tree-add-form"><input id="add-path" list="add-suggest" placeholder="/path/to/repo" autocomplete="off" onkeydown="if(event.key==='Enter')submitAddRepo()"><datalist id="add-suggest">${addSuggestions.map(p=>`<option value="${esc(p)}"></option>`).join('')}</datalist><div class="row"><button class="btn small primary" type="button" onclick="submitAddRepo()">Add board</button><button class="btn small" type="button" onclick="addRepoOpen=false;renderTree()">Cancel</button></div><div class="tree-add-msg" id="add-msg">Its region appears on the map within a few seconds.</div></div>`:`<button class="tree-add" type="button" onclick="openAddRepo()">+ add repo</button>`
+  html+=addRepoOpen?`<div class="tree-add-form"><input id="add-path" placeholder="/path/to/repo — or pick below" autocomplete="off" spellcheck="false" oninput="renderAddSuggestions()" onkeydown="if(event.key==='Enter')submitAddRepo()"><div class="tree-sugg" id="add-sugg"></div><div class="row"><button class="btn small primary" type="button" onclick="submitAddRepo()">Add board</button><button class="btn small" type="button" onclick="addRepoOpen=false;renderTree()">Cancel</button></div><div class="tree-add-msg" id="add-msg">Its region appears on the map within a few seconds.</div></div>`:`<button class="tree-add" type="button" onclick="openAddRepo()">+ add repo</button>`
   html+=`<div class="tree-legend"><span class="tree-legend-dot"></span>most recent edit · time since last write</div>`
   $('tree').innerHTML=html
-  if(addRepoOpen){const i=document.getElementById('add-path');if(i&&addRepoFocus){i.focus();addRepoFocus=false}}
+  if(addRepoOpen){renderAddSuggestions();const i=document.getElementById('add-path');if(i&&addRepoFocus){i.focus();addRepoFocus=false}}
 }
 function renderRootTree(b){
   const isSelf=M&&b.port===M.port
