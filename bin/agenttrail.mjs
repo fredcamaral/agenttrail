@@ -682,9 +682,9 @@ async function init() {
   if (!fs.existsSync(planPath)) {
     fs.writeFileSync(planPath, `# ${path.basename(repo)}
 
-## Draw the real map {#setup}
-tech: placeholder card — an agent replaces this whole file when it backfills the plan
-- [ ] Paste the setup note to an agent working in this repo {#setup-backfill}
+## Set up the project {#setup}
+tech: scaffolding
+- [ ] First task {#setup-first}
 
 ## decisions
 `)
