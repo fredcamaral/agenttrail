@@ -24,7 +24,9 @@
 .sugg-row{display:flex;flex-direction:column;gap:1px;width:100%;padding:6px 10px;border:0;border-radius:8px;background:transparent;color:var(--text);cursor:pointer;text-align:left;transition:background 150ms var(--ease-out)}
 .sugg-row:hover{background:var(--hover)}
 .sugg-name{font-size:12.5px;font-weight:550}
-.sugg-dir{font:400 10.5px var(--mono);color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.firstrun{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);z-index:2;display:flex;align-items:center;gap:16px;max-width:640px;padding:14px 20px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 12px 40px #000}.firstrun p{color:var(--dim);font-size:13px;line-height:18px;text-wrap:pretty;margin:0}.firstrun strong{color:var(--text);font-weight:600}.firstrun .btn{flex:none}.firstrun.inline{position:static;transform:none;max-width:none;margin-top:8px}
+.sugg-dir{font:400 10.5px var(--mono);color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,12px);max-width:520px;padding:11px 18px;border-radius:12px;background:var(--raised);border:1px solid var(--line);color:var(--text);font-size:13px;line-height:18px;opacity:0;pointer-events:none;transition:opacity 250ms var(--ease-out),transform 250ms var(--ease-out);z-index:60}
+#toast.show{opacity:1;transform:translate(-50%,0)}.firstrun{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);z-index:2;display:flex;align-items:center;gap:16px;max-width:640px;padding:14px 20px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 12px 40px #000}.firstrun p{color:var(--dim);font-size:13px;line-height:18px;text-wrap:pretty;margin:0}.firstrun strong{color:var(--text);font-weight:600}.firstrun .btn{flex:none}.firstrun.inline{position:static;transform:none;max-width:none;margin-top:8px}
 .zero{display:flex;flex-direction:column;justify-content:center;gap:18px;max-width:600px;min-height:100%;margin:0 auto;padding:48px 32px}
 .zero h1{font-size:24px;line-height:32px;font-weight:600;letter-spacing:-.03em}
 .zero .zero-sub{color:var(--dim);text-wrap:pretty}
@@ -124,6 +126,17 @@ function renderAddSuggestions(){const box=document.getElementById('add-sugg');if
   box.innerHTML=list.map(p=>{const name=p.split('/').pop(),dir=p.slice(0,p.length-name.length)
     return`<button type="button" class="sugg-row" onclick="pickSuggestion(this.dataset.p)" data-p="${esc(p)}"><span class="sugg-name">${esc(name)}</span><span class="sugg-dir">${esc(dir)}</span></button>`}).join('')||(q?`<div class="tree-add-msg">no known repo matches — full path works too</div>`:'')}
 function pickSuggestion(p){const i=document.getElementById('add-path');if(i)i.value=p;submitAddRepo()}
+function toast(msg,ms){let t=document.getElementById('toast');if(!t){t=document.createElement('div');t.id='toast';document.body.appendChild(t)}t.textContent=msg;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),ms||6000)}
+let setupBusy=false
+async function setupBoard(port){if(setupBusy)return;setupBusy=true;toast('setting up…')
+  try{const r=await(await fetch('/setup-board',{method:'POST',body:JSON.stringify({port})})).json()
+    if(r.ok&&r.prompt){try{await navigator.clipboard.writeText(r.prompt)
+        toast('done — a note for your agent is on your clipboard. paste it to the agent working in this repo and the map draws itself.',12000)}
+      catch{toast('set up. now ask the agent working in this repo to fill in PLAN.md — the map draws itself.',12000)}
+      setTimeout(pollWorld,1500)}
+    else toast(r.error||'could not set it up — that board may be running an older version; restart it and try again',9000)
+  }catch{toast('could not reach the board',6000)}
+  setTimeout(()=>setupBusy=false,4000)}
 let addRepoBusy=false
 async function submitAddRepo(){const i=document.getElementById('add-path'),msg=document.getElementById('add-msg');if(!i||!i.value.trim()||addRepoBusy)return
   addRepoBusy=true;setTimeout(()=>addRepoBusy=false,8000)
@@ -272,7 +285,7 @@ function regionCardHtml(b,L){
   const live=(b.runs||[]).filter(r=>!r.ended)
   const sq=b.plan.filter(n=>n.level==='component').map((c,i)=>`<rect x="${40+i*30}" y="${h/2+4}" width="20" height="20" rx="5" fill="${c.status==='done'?'#3f7f57':c.status==='blocked'?'var(--danger)':'none'}" stroke="${c.status==='active'?'var(--accent)':'var(--faint)'}" stroke-width="2.5"/>`).join('')
   const marks=live.map((r,i)=>{const ic=agentIcon(r.agent);return ic?`<g transform="translate(${40+i*34} ${h/2+44}) scale(1.1)"><path fill="${agentColor(r.agent)}" d="${ic}"/></g>`:''}).join('')
-  return`<text x="40" y="${h/2-36}" fill="var(--text)" font-size="44" font-weight="650" font-family="var(--font)" letter-spacing="-1">${esc(b.project)}</text>${sq}${marks}${!b.hasPlan?`<text x="40" y="${h/2+44}" fill="var(--faint)" font-size="16" font-family="var(--font)">no map yet — ask your agent: “run npx agenttrail init here”</text>`:''}${live.length?`<text x="${w-40}" y="${h/2-36}" text-anchor="end" fill="var(--dim)" font-size="16" font-family="var(--font)">${live.length} running</text>`:''}`
+  return`<text x="40" y="${h/2-36}" fill="var(--text)" font-size="44" font-weight="650" font-family="var(--font)" letter-spacing="-1">${esc(b.project)}</text>${sq}${marks}${!b.hasPlan?`<text x="40" y="${h/2+44}" fill="var(--faint)" font-size="16" font-family="var(--font)">nothing mapped yet</text><g class="setup-btn" onclick="setupBoard(${b.port})" style="cursor:pointer"><rect x="40" y="${h/2+64}" width="172" height="40" rx="11" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="1.2"/><text x="126" y="${h/2+89}" text-anchor="middle" fill="var(--accent)" font-size="15.5" font-weight="600" font-family="var(--font)">Set up the map</text></g>`:''}${live.length?`<text x="${w-40}" y="${h/2-36}" text-anchor="end" fill="var(--dim)" font-size="16" font-family="var(--font)">${live.length} running</text>`:''}`
 }
 const CARD_LOD=0.3
 let _saved=null

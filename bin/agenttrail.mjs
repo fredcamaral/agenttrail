@@ -551,6 +551,23 @@ const server = http.createServer((req, res) => {
       }
     } catch {}
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out.slice(0, 15)))
+  } else if (u.pathname === '/setup' && req.method === 'POST') {
+    init().then(() => {
+      planText = safeRead(planPath); parsed = parsePlan(planText); rebuildMatchers(); planMtime = statMtime(planPath)
+      broadcast()
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, prompt: BACKFILL_PROMPT }))
+    }).catch(e => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: String(e) })))
+  } else if (u.pathname === '/setup-board' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      let out = { ok: false, error: 'no board there' }
+      try {
+        const p = Number(JSON.parse(body).port)
+        out = await fetch(`http://127.0.0.1:${p}/setup`, { method: 'POST', signal: AbortSignal.timeout(5000) }).then(r => r.json())
+      } catch {}
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out))
+    })
   } else if (u.pathname === '/spawn' && req.method === 'POST') {
     let body = ''
     req.on('data', c => body += c)
