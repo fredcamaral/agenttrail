@@ -524,7 +524,7 @@ const server = http.createServer((req, res) => {
   if (u.pathname === '/') {
     res.writeHead(200, { 'content-type': 'text/html' }).end(fs.readFileSync(indexPath, 'utf8'))
   } else if (u.pathname === '/whoami') {
-    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ project: session.project, port }))
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ project: session.project, port, repoPath: repo }))
   } else if (u.pathname === '/board-lite') {
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(liteModel()))
   } else if (u.pathname === '/world') {
@@ -532,6 +532,53 @@ const server = http.createServer((req, res) => {
   } else if (u.pathname === '/tree') {
     if (treeDirty) { tree = buildTree(repo); treeDirty = false }
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ tree, treeTruncated }))
+  } else if (u.pathname === '/suggest') {
+    const seen = new Set(), out = []
+    const add = p => { if (p && p !== repo && !seen.has(p) && fs.existsSync(p)) { seen.add(p); out.push(p) } }
+    try {
+      const dir = path.join(os.homedir(), '.agenttrail')
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.endsWith('.json')) continue
+        try { add(JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')).repoPath) } catch {}
+      }
+    } catch {}
+    try {
+      for (const sib of fs.readdirSync(path.dirname(repo), { withFileTypes: true })) {
+        if (!sib.isDirectory()) continue
+        const p = path.join(path.dirname(repo), sib.name)
+        if (p !== repo && fs.existsSync(path.join(p, '.git'))) add(p)
+      }
+    } catch {}
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out.slice(0, 15)))
+  } else if (u.pathname === '/spawn' && req.method === 'POST') {
+    let body = ''
+    req.on('data', c => body += c)
+    req.on('end', async () => {
+      let out = { ok: false, error: 'bad request' }
+      try {
+        const p = path.resolve(String(JSON.parse(body).path || ''))
+        if (!fs.existsSync(p) || !fs.statSync(p).isDirectory()) out = { ok: false, error: 'not a folder on this machine' }
+        else {
+          let already = null
+          for (const b of boards) {
+            try {
+              const w = await fetch(`http://127.0.0.1:${b.port}/whoami`, { signal: AbortSignal.timeout(300) }).then(r => r.json())
+              if (w.repoPath === p) { already = b.port; break }
+            } catch {}
+          }
+          if (already) out = { ok: true, already }
+          else {
+            const cp = await import('node:child_process')
+            const child = cp.spawn(process.execPath, [fileURLToPath(import.meta.url), p, '--no-open'], { detached: true, stdio: 'ignore' })
+            child.unref()
+            setTimeout(discoverBoards, 2500)
+            setTimeout(discoverBoards, 6000)
+            out = { ok: true }
+          }
+        }
+      } catch {}
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out))
+    })
   } else if (u.pathname === '/nudge') {
     const cwd = u.searchParams.get('cwd') || ''
     const st = planStaleness()

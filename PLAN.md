@@ -50,6 +50,9 @@ needs: [watcher]
 files: [public/**]
 - [x] Folder tree with live "just touched" accents {#explorer-tree}
   by: claude
+- [x] Add a repo from the sidebar {#explorer-add-repo}
+  tech: + add repo row -> /suggest (known repos + git siblings) -> POST /spawn spawns a sibling daemon
+  by: claude
 
 ## Watch live runs {#runs}
 tech: claude code hooks adapter — PostToolUse/TodoWrite → POST /events
