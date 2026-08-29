@@ -1,42 +1,43 @@
 {
   "name": "agenttrail",
   "version": "0.2.0",
-  "description": "Local observability map for AI coding agents. Watch Claude Code, Codex, and Cursor plans, tool calls, file changes, and progress in real time.",
+  "description": "Live view of every coding-agent session on your machine: status, current tool, subagent and workflow tree, cost, a digest of what happened while you were away, and transcript downloads. One local daemon reading Claude Code and opencode transcripts directly. No hooks, no database, no dependencies.",
   "type": "module",
   "bin": {
     "agenttrail": "bin/agenttrail.mjs"
   },
+  "scripts": {
+    "test": "node --test 'test/*.test.mjs'"
+  },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "license": "MIT",
   "files": [
     "bin",
-    "public",
-    "docs/demo.gif"
+    "lib",
+    "public"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sodiumsun/agenttrail.git"
+    "url": "git+https://github.com/fredcamaral/agenttrail.git"
   },
-  "homepage": "https://github.com/sodiumsun/agenttrail#readme",
+  "homepage": "https://github.com/fredcamaral/agenttrail#readme",
   "keywords": [
-    "ai-agents",
     "claude-code",
-    "codex",
-    "openai-codex",
-    "cursor-ai",
+    "opencode",
     "coding-agents",
-    "ai-coding-agents",
+    "ai-agents",
     "agent-observability",
     "agent-monitoring",
-    "coding-agent-monitoring",
-    "live-map",
+    "session-monitor",
+    "subagents",
+    "workflows",
+    "transcripts",
+    "digest",
     "live-dashboard",
     "local-first",
-    "progress-tracking",
-    "file-watcher",
-    "plan",
-    "monitor"
+    "sse",
+    "no-dependencies"
   ]
 }
