@@ -33,6 +33,30 @@ function listView(s) {
   return { ...s, agents: ranked, agentCount: agents.length, agentsRunning: running }
 }
 
+// ---------- adapter merge ----------
+// One daemon, several sources. The composite presents the SAME adapter
+// interface, so createServer never learns there is more than one of them.
+export function composeAdapters(adapters) {
+  const live = adapters.filter(Boolean)
+  // Whoever lists the id owns it, and only that adapter is asked about it — an
+  // opencode session must answer "no file" for /export rather than fall through
+  // to the Claude adapter and match some unrelated transcript. An id NOBODY
+  // lists (a session that ended, transcript still on disk) is offered to every
+  // adapter, so downloading by uuid keeps working as it does with one source.
+  const owners = id => {
+    const own = live.filter(a => a.sessions().some(s => s.id === id))
+    return own.length ? own : live
+  }
+  const firstOf = (id, f) => { for (const a of owners(id)) { const v = f(a); if (v) return v } return null }
+  return {
+    sessions: () => live.flatMap(a => a.sessions()).sort((x, y) => y.lastEventAt - x.lastEventAt),
+    digestEvents: since => live.flatMap(a => a.digestEvents(since)).sort((x, y) => x.at - y.at),
+    exportPath: id => firstOf(id, a => a.exportPath(id)),
+    distill: id => firstOf(id, a => a.distill(id)),
+    stop: () => { for (const a of live) { try { a.stop() } catch {} } },
+  }
+}
+
 function readVersion() {
   try { return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version }
   catch { return '0.0.0' }
@@ -212,6 +236,8 @@ export function createServer({ adapter, host = os.hostname(), version = VERSION 
       iter = src?.[Symbol.asyncIterator]?.() ?? src?.[Symbol.iterator]?.()
       if (!iter) return fail()
       first = await iter.next()
+      // An empty distill is an unknown session, not a zero-byte download.
+      if (first.done) { await release(); return fail() }
     } catch { return fail() }
 
     res.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8', 'content-disposition': disposition })
@@ -350,8 +376,10 @@ async function runDaemon(args) {
     return
   }
   const { createClaudeAdapter } = await import('../lib/claude.mjs')
+  const { createOpencodeAdapter } = await import('../lib/opencode.mjs')
   let notify = () => {}
-  const adapter = createClaudeAdapter({ onChange: () => notify() })
+  const onChange = () => notify()
+  const adapter = composeAdapters([createClaudeAdapter({ onChange }), createOpencodeAdapter({ onChange })])
   const server = createServer({ adapter })
   notify = () => server.notify()
 

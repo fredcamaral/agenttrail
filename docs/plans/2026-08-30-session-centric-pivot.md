@@ -186,14 +186,36 @@ opencode (wave 2) — `~/.local/share/opencode/opencode.db`, SQLite WAL:
   repo CLAUDE.md (dev notes) and drop root PLAN.md; README stub note.
 Exit: daemon on mordor shows real live sessions with tool lines; tests pass.
 
-### Wave 2 — features (lanes D, E, F in parallel)
-- D: subagent/workflow tree UI + /session/<id> detail view + zoom altitudes
-  (fleet → session → agents) reusing the camera layer.
-- E: digest (journal + /digest + UI panel + "since I left" default) and
-  Markdown distill for /export&format=md (prompts, replies, tool summary).
-- F: lib/opencode.mjs adapter + fixture DB tests; sessions merge into model
-  with source:"opencode".
-Exit: tree visible, digest answers overnight question, both formats export.
+### Wave 2 — features (lanes D, E, F in parallel; disjoint files)
+Status: wave 1 DONE (commit 3f74727) — adapter, daemon, session-card UI,
+86 tests, smoke against 11 real sessions. Journal + /digest + /session/<id>
+already exist from wave 1; wave 2 builds on them.
+
+Decision: NO spatial zoom map. Cards + drill-in answer the session question
+better than a canvas; wave 3 may add flourish. Camera code lives in git
+history if ever wanted.
+
+- D (public/index.html only): session detail drill-in (click card → panel
+  via /session/<id>): subagent/workflow tree with live status, recent tools
+  timeline, todos, PRs. Digest panel: "since I left" default from a
+  localStorage last-seen timestamp, custom since picker, per-session deltas
+  from /digest. Refresh detail panel from SSE ticks.
+- E (lib/distill.mjs + test/distill.test.mjs + a <=3-line delegate edit in
+  lib/claude.mjs): Markdown distill of a transcript — session header (title,
+  cwd, model, cost), then per turn: user prompt, assistant text (thinking
+  skipped), tool calls as one-liners (name + detail + ms), subagent spawns
+  as links. Async iterable of chunks; bounded memory on 60MB files.
+- F (lib/opencode.mjs + test/opencode.test.mjs + adapter-merge edit in
+  bin/agenttrail.mjs): createOpencodeAdapter(opts) — same interface;
+  node:sqlite READ-ONLY on opencode.db (v2 session/session_message tables,
+  legacy message/part fallback), sessions with source:"opencode",
+  parent_id → child sessions folded as agents[], liveness = pgrep +
+  time_updated + db-wal mtime polling. exportPath() null (no file);
+  distill()/digestEvents() minimal or empty v1. Fixture DB built in tests
+  via node:sqlite. Daemon composes [claude, opencode] adapters; /export
+  404s politely when exportPath is null and UI hides downloads then.
+Exit: tree visible with live status, digest answers the overnight question,
+md export streams, opencode sessions merge (fixture-proven).
 
 ### Wave 3 — beautify + responsividade
 Visual polish pass over the whole UI (tokens, spacing, type scale, light/dark

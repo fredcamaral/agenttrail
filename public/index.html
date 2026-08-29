@@ -69,24 +69,67 @@ a{color:var(--accent)}
 .foot{display:flex;align-items:center;gap:8px;margin-top:8px;min-height:24px}
 .pr{padding:1px 7px;border-radius:999px;color:var(--accent);background:var(--accent-bg);font:600 11px/16px var(--mono);text-decoration:none}
 .pr:hover{color:var(--text)}
-.dl{position:relative;margin-left:auto}
+.dl{position:relative}
+.foot .act{margin-left:auto}
 .dl>summary{display:flex;align-items:center;gap:6px;padding:2px 8px;border:1px solid var(--line);border-radius:8px;color:var(--dim);cursor:pointer;list-style:none;font-size:11px;line-height:16px}
-.dl>summary::-webkit-details-marker{display:none}
+summary::-webkit-details-marker{display:none}
 .dl>summary:hover{color:var(--text);background:var(--hover)}
 .dl-menu{position:absolute;right:0;bottom:calc(100% + 6px);z-index:2;display:flex;flex-direction:column;min-width:148px;padding:4px;border:1px solid var(--line);border-radius:10px;background:var(--raised);box-shadow:0 12px 40px var(--shadow-strong)}
 .dl-menu a{padding:6px 10px;border-radius:6px;color:var(--soft);text-decoration:none;font-size:12px}
 .dl-menu a:hover{color:var(--text);background:var(--hover)}
-@media(max-width:720px){.topbar{grid-template-columns:minmax(0,1fr);gap:8px}.status{justify-self:start}.grid{grid-template-columns:minmax(0,1fr);padding:16px 12px 48px}}
+.act{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--dim);cursor:pointer;font:500 12px/16px var(--font)}
+.act:hover{color:var(--text);background:var(--hover)}
+.act.on{color:var(--text);border-color:var(--accent);background:var(--accent-bg)}
+.card .act{min-height:0;padding:2px 8px;font-weight:400;font-size:11px}
+dialog{width:min(760px,100%);max-height:88dvh;margin:auto;padding:0;border:1px solid var(--line);border-radius:16px;background:var(--overlay);color:var(--text);box-shadow:0 24px 80px var(--shadow-strong)}
+dialog::backdrop{background:rgb(0 0 0/.6)}
+.sheet{display:flex;flex-direction:column;max-height:88dvh}
+.sheet-head{display:flex;align-items:center;gap:10px;min-width:0;padding:12px 16px;border-bottom:1px solid var(--hover)}
+.sheet-head b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet-head .sub{color:var(--dim);font:400 11.5px/16px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet-head .act{margin-left:auto;flex:none}
+.sheet-body{padding:14px 16px 20px;overflow:auto;overscroll-behavior:contain}
+.sec{margin-top:18px}
+.sec:first-child{margin-top:0}
+.sec>h2{margin-bottom:4px;color:var(--faint);font:600 10.5px/16px var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.row{display:flex;gap:8px;align-items:baseline;padding:4px 0;border-top:1px solid var(--hover);font:400 11.5px/17px var(--mono);min-width:0}
+summary.row{cursor:pointer;list-style:none}
+summary.row:hover{background:var(--hover)}
+.row .d{flex:none;align-self:flex-start;width:6px;height:6px;margin-top:5px;border-radius:50%;background:var(--faint)}
+.row.running .d{background:var(--success);animation:working-pulse 1.6s ease-in-out infinite}
+.row.done .d{background:var(--complete-text)}
+.row .k{flex:none;color:var(--accent)}
+.row .v{color:var(--soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .r{flex:none;margin-left:auto;padding-left:8px;color:var(--faint);font-variant-numeric:tabular-nums}
+.row.done .v{color:var(--dim)}
+button.row{width:100%;border:0;border-top:1px solid var(--hover);background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+button.row:hover{background:var(--hover)}
+.row.big{font:400 12.5px/18px var(--font);letter-spacing:-.01em}
+.row.big .v{white-space:normal}
+.hint{padding:6px 0;color:var(--faint);font:400 11.5px/17px var(--mono)}
+.bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
+.bar input{min-height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--soft);font:400 12px/16px var(--mono);color-scheme:inherit}
+.dls{display:flex;flex-wrap:wrap;gap:8px}
+.dls a{padding:4px 10px;border:1px solid var(--line);border-radius:8px;color:var(--soft);text-decoration:none;font-size:12px}
+.dls a:hover{color:var(--text);background:var(--hover)}
+@media(max-width:720px){.topbar{grid-template-columns:minmax(0,1fr);gap:8px}.status{justify-self:start}.grid{grid-template-columns:minmax(0,1fr);padding:16px 12px 48px}
+dialog{width:100%;max-width:100%;max-height:100dvh;height:100dvh;border:0;border-radius:0}.sheet{max-height:100dvh;height:100dvh}}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}}
 </style>
 </head>
 <body>
 <header class="topbar">
   <div class="brand"><svg viewBox="0 0 1000 1000" aria-hidden="true"><rect width="1000" height="1000" rx="210" fill="#17171a"/><g fill="none" stroke="#fff" stroke-width="92" stroke-linecap="round" stroke-linejoin="round"><path d="M180 810C278 617 363 405 445 180C467 120 535 120 560 180C650 414 733 625 820 810"/><path d="M180 810C300 704 430 646 610 590"/></g><circle cx="180" cy="810" r="74" fill="#fff"/><circle cx="610" cy="590" r="74" fill="#fff"/><circle cx="820" cy="810" r="74" fill="#fff"/><circle cx="820" cy="810" r="38" fill="#FFB21A"/></svg><span class="brand-name">agenttrail</span><span class="brand-host" id="host"></span></div>
-  <div class="status"><span id="counts"></span><button class="theme-toggle" id="theme-toggle" type="button" role="switch" aria-checked="false" aria-label="Use light theme" onclick="toggleTheme()"><span id="theme-toggle-label">Light</span><span class="theme-track" aria-hidden="true"><span class="theme-thumb"></span></span></button><span class="watching" id="link">watching</span></div>
+  <div class="status"><span id="counts"></span><button class="act" id="digest-btn" type="button" onclick="openDigest()">digest</button><button class="theme-toggle" id="theme-toggle" type="button" role="switch" aria-checked="false" aria-label="Use light theme" onclick="toggleTheme()"><span id="theme-toggle-label">Light</span><span class="theme-track" aria-hidden="true"><span class="theme-thumb"></span></span></button><span class="watching" id="link">watching</span></div>
 </header>
 <main class="grid" id="sessions" aria-label="Agent sessions"></main>
 <div class="empty" id="empty">Connecting to the live monitor…</div>
+<dialog id="sheet" aria-labelledby="sheet-title">
+  <div class="sheet">
+    <div class="sheet-head"><b id="sheet-title"></b><span class="sub" id="sheet-sub"></span><button class="act" type="button" onclick="closeSheet()" aria-label="Close (esc)">esc</button></div>
+    <div class="sheet-body" id="sheet-body"></div>
+  </div>
+</dialog>
 <script>
 const $=id=>document.getElementById(id)
 function syncTheme(){const light=document.documentElement.dataset.theme==='light',toggle=$('theme-toggle'),label=$('theme-toggle-label');if(toggle){toggle.setAttribute('aria-checked',String(light));toggle.setAttribute('aria-label',light?'Use dark theme':'Use light theme')}if(label)label.textContent=light?'Dark':'Light';document.querySelector('meta[name="theme-color"]')?.setAttribute('content',light?'#fff':'#000')}
@@ -108,6 +151,9 @@ const num=(v,d)=>v!=null&&Number.isFinite(+v)?+v:d
 const base=p=>String(p??'').replace(/\/+$/,'').split('/').pop()
 const money=n=>'$'+(n>=100?String(Math.round(n)):n.toFixed(2))
 const href=u=>/^https?:\/\//i.test(String(u??''))?String(u):'#'
+// An explicit null transcriptPath means the adapter has no file to serve
+// (opencode sessions); an absent field is unknown and keeps the links.
+const hasFile=s=>s.transcriptPath!==null
 let S=new Map()
 const cards=new Map()
 
@@ -133,7 +179,7 @@ function cardHtml(s){
     <div class="meta">${esc(base(s.cwd)||'—')}${s.gitBranch?` <span class="sep">·</span> <span class="br">${esc(s.gitBranch)}</span>`:''}${s.model?` <span class="sep">·</span> ${esc(s.model)}`:''}${s.account?` <span class="sep">·</span> ${esc(s.account)}`:''}</div>
     ${tool?`<div class="tool"><span class="tn">${esc(tool.name)}</span><span class="td">${esc(tool.detail||'')}</span><span class="ta t-ago" data-at="${+tool.at||0}"></span></div>`:''}
     ${stats.length?`<div class="stats">${stats.join('')}</div>`:''}
-    <div class="foot">${prs}<details class="dl"><summary>export</summary><div class="dl-menu"><a href="/export?session=${q}&amp;format=jsonl" download>Raw JSONL</a><a href="/export?session=${q}&amp;format=md" download>Markdown</a></div></details></div>`
+    <div class="foot">${prs}<button class="act" type="button" data-open>details</button>${hasFile(s)?`<details class="dl"><summary>export</summary><div class="dl-menu"><a href="/export?session=${q}&amp;format=jsonl" download>Raw JSONL</a><a href="/export?session=${q}&amp;format=md" download>Markdown</a></div></details>`:''}</div>`
 }
 
 function renderCounts(){
@@ -163,6 +209,229 @@ function render(){
   renderCounts();renderTimes()
 }
 
+// ---- shared sheet: one dialog, two panels (session detail, digest) --------
+// <dialog> is doing the keyboard work: showModal() gives esc-to-close, focus
+// containment and the backdrop for free. Listeners go through on() so a stub
+// DOM without addEventListener degrades to no-ops instead of throwing.
+const on=(el,ev,fn,cap)=>{if(el&&el.addEventListener)el.addEventListener(ev,fn,!!cap)}
+const txt=(id,v)=>{const el=$(id);if(el)el.textContent=v}
+// A tick every second must not rewrite an unchanged panel. This only covers
+// the panel that did not move: a busy session's timestamps change every tick,
+// so what survives THAT repaint is remembered separately (WFOPEN).
+let sheetHtml=''
+function paint(html){const b=$('sheet-body');if(!b)return;if(sheetHtml!==html){b.innerHTML=html;sheetHtml=html}renderTimes()}
+const dur=ms=>{const s=Math.max(0,Math.round(+ms/1000));return s<60?`${s}s`:s<3600?`${Math.round(s/60)} min`:`${(s/3600).toFixed(1)} h`}
+const when=ms=>{try{return new Date(ms).toLocaleString()}catch{return String(ms)}}
+const sheet=$('sheet')
+let DET=null,DG=null,fetching=false,refetch=false
+
+function openSheet(title,sub){sheetHtml='';txt('sheet-title',title);txt('sheet-sub',sub||'');if(sheet&&sheet.showModal&&!sheet.open)try{sheet.showModal()}catch{}}
+function closeSheet(){DET=DG=null;if(sheet&&sheet.close&&sheet.open)sheet.close()}
+on(sheet,'close',()=>{DET=DG=null})
+on(sheet,'click',e=>{if(e.target===sheet)closeSheet()})   // click the backdrop
+
+// ---- session detail -------------------------------------------------------
+// Cards carry a trimmed agents[]; the full tree comes from /session/<id>, so
+// an SSE tick that touches this session refetches instead of merging a slice.
+function openDetail(id){
+  if(!id)return
+  DG=null
+  const s=S.get(id)||null
+  DET={id,data:s,full:false,gone:false}
+  openSheet(s&&(s.name||s.title)||id,s?`${stat(s)} · ${s.cwd||''}`:'')
+  renderDetail();loadDetail()
+}
+async function loadDetail(){
+  if(!DET)return
+  if(fetching){refetch=true;return}
+  fetching=true
+  const id=DET.id
+  try{
+    const r=await fetch('/session/'+encodeURIComponent(id))
+    const j=r.ok?await r.json():null
+    if(DET&&DET.id===id){if(j){DET.data=j;DET.full=true;DET.gone=false}else DET.gone=true;renderDetail()}
+  }catch{}
+  finally{fetching=false;if(refetch&&DET){refetch=false;loadDetail()}else refetch=false}
+}
+
+// parentAgentId is a claim, not a guarantee: a self-parent, a loop or a parent
+// that is not in the list must still render exactly once, at depth 0.
+function treeRows(list){
+  const byId=new Map(),kids=new Map()
+  for(const a of list)byId.set(String(a.agentId),a)
+  for(const a of byId.values()){
+    const id=String(a.agentId),p=a.parentAgentId==null?'':String(a.parentAgentId)
+    const key=p&&p!==id&&byId.has(p)?p:''
+    if(!kids.has(key))kids.set(key,[])
+    kids.get(key).push(a)
+  }
+  for(const l of kids.values())l.sort((a,b)=>(+a.startedAt||0)-(+b.startedAt||0))
+  const out=[],seen=new Set()
+  const walk=(key,depth)=>{
+    for(const a of kids.get(key)||[]){
+      const id=String(a.agentId)
+      if(seen.has(id))continue
+      seen.add(id);out.push({a,depth})
+      if(depth<9)walk(id,depth+1)
+    }
+  }
+  walk('',0)
+  for(const a of byId.values())if(!seen.has(String(a.agentId))){seen.add(String(a.agentId));out.push({a,depth:0})}
+  return out
+}
+const AROWS=60
+function agentRows(list){
+  const all=treeRows(list),rows=all.slice(0,AROWS)
+  const html=rows.map(({a,depth})=>{
+    const run=a.status==='running'
+    const age=run?(+a.startedAt>0?`<span class="t-ago" data-at="${+a.startedAt}"></span>`:''):(+a.lastEventAt>+a.startedAt?dur(a.lastEventAt-a.startedAt):'')
+    return`<div class="row ${run?'running':'done'}"${depth?` style="margin-left:${depth*14}px"`:''}><span class="d"></span><span class="k">${esc(a.type||'agent')}</span><span class="v">${esc(a.description||a.agentId)}</span><span class="r">${a.model?esc(a.model)+' · ':''}${age}</span></div>`
+  }).join('')
+  return html+(all.length>rows.length?`<div class="hint">+${all.length-rows.length} more</div>`:'')
+}
+// Every repaint of a busy session rewrites this markup (timestamps move), so
+// the open/closed state of a workflow group cannot live in the DOM alone.
+// WFOPEN remembers what the reader chose; run>0 is only the default.
+const WFOPEN=new Map()
+function treeSection(s){
+  if(!DET.full)return`<div class="sec"><h2>subagents</h2><div class="hint">loading the tree…</div></div>`
+  const agents=(s.agents||[]).filter(a=>a&&a.agentId!=null)
+  if(!agents.length)return''
+  // counts come from the agents actually rendered, so the group header can
+  // never disagree with the rows under it
+  const wf=new Map(),loose=[]
+  for(const w of s.workflows||[])if(w&&w.id!=null)wf.set(String(w.id),[])
+  for(const a of agents){
+    const k=a.workflowId==null?'':String(a.workflowId)
+    if(!k){loose.push(a);continue}
+    if(!wf.has(k))wf.set(k,[])
+    wf.get(k).push(a)
+  }
+  let out=''
+  for(const [id,list] of wf){
+    const run=list.filter(a=>a.status==='running').length
+    const k=String(id),open=WFOPEN.has(k)?WFOPEN.get(k):run>0
+    out+=`<details class="wf" data-wf="${esc(k)}"${open?' open':''}><summary class="row ${run?'running':'done'}"><span class="d"></span><span class="k">workflow</span><span class="v">${esc(id)}</span><span class="r">${list.length-run}/${list.length} done${run?` · ${run} running`:''}</span></summary>${agentRows(list)}</details>`
+  }
+  return`<div class="sec"><h2>subagents · ${agents.length}</h2>${out}${loose.length?agentRows(loose):''}</div>`
+}
+function toolSection(s){
+  const cur=s.currentTool,rec=s.recentTools||[]
+  if(!cur&&!rec.length)return''
+  const row=(t,run)=>`<div class="row ${run?'running':'done'}"><span class="d"></span><span class="k">${esc(t.name)}</span><span class="v">${esc(t.detail||'')}</span><span class="r">${!run&&Number.isFinite(+t.ms)?dur(t.ms)+' · ':''}<span class="t-ago" data-at="${+t.at||0}"></span></span></div>`
+  return`<div class="sec"><h2>tools</h2>${cur?row(cur,true):''}${rec.map(t=>row(t,false)).join('')}</div>`
+}
+function todoSection(s){
+  const t=s.todos||[]
+  if(!t.length)return''
+  const done=t.filter(x=>x.status==='completed').length
+  return`<div class="sec"><h2>todos · ${done}/${t.length}</h2>${t.map(x=>{const st=String(x.status||'')
+    return`<div class="row big ${st==='completed'?'done':st==='in_progress'?'running':''}"><span class="d"></span><span class="v">${esc(x.content)}</span></div>`}).join('')}</div>`
+}
+function prSection(s){
+  const prs=(s.prs||[]).map(p=>`<a class="pr" href="${esc(href(p.url))}" target="_blank" rel="noopener noreferrer">#${esc(p.number)}${p.repo?' '+esc(p.repo):''}</a>`).join(' ')
+  const q=encodeURIComponent(String(s.id??''))
+  const dl=hasFile(s)?`<div class="sec"><h2>transcript</h2><div class="dls"><a href="/export?session=${q}&amp;format=jsonl" download>Raw JSONL</a><a href="/export?session=${q}&amp;format=md" download>Markdown</a></div></div>`:''
+  return(prs?`<div class="sec"><h2>pull requests</h2><div class="dls">${prs}</div></div>`:'')+dl
+}
+function renderDetail(){
+  if(!DET)return
+  // A card pre-seeds DET.data from the grid, so a 404 must be checked BEFORE
+  // the data: otherwise a dropped session keeps painting its last numbers.
+  if(DET.gone){txt('sheet-sub','');return paint(`<div class="hint">the daemon no longer tracks this session</div>`)}
+  const s=DET.data
+  if(!s)return paint(`<div class="hint">loading…</div>`)
+  const st=stat(s)
+  const meta=[s.cwd,s.gitBranch,s.model,s.account,s.pid?'pid '+s.pid:'',s.tmux,s.kind,s.version?'v'+s.version:''].filter(Boolean).map(esc).join(' · ')
+  const bits=[]
+  if(s.cost&&Number.isFinite(+s.cost.totalUSD))bits.push(`<b>${money(+s.cost.totalUSD)}</b>`)
+  if(+s.turns>0)bits.push(`<b>${+s.turns}</b> turns`)
+  if(s.cost&&(+s.cost.linesAdded||+s.cost.linesRemoved))bits.push(`+${+s.cost.linesAdded||0}/-${+s.cost.linesRemoved||0} lines`)
+  if(+s.startedAt>0)bits.push(`up <span class="t-ago" data-at="${+s.startedAt}"></span>`)
+  if(+s.lastEventAt>0)bits.push(`seen <span class="t-ago" data-at="${+s.lastEventAt}"></span>`)
+  paint(`<div class="sec"><div class="row big ${st==='busy'?'running':st==='ended'?'done':''}"><span class="d"></span><span class="v">${esc(s.title||'no title yet')}</span><span class="r">${esc(st)}</span></div>
+    <div class="hint">${meta}</div>${bits.length?`<div class="stats">${bits.map(x=>`<span>${x}</span>`).join('')}</div>`:''}</div>
+    ${toolSection(s)}${treeSection(s)}${todoSection(s)}${prSection(s)}`)
+}
+
+// ---- digest ---------------------------------------------------------------
+// "since I left" is the timestamp of the previous page load, so opening the
+// dashboard is what marks the world as seen.
+const RANGES=[[0,'since I left'],[2,'2h'],[8,'8h'],[24,'24h']]
+const LAST_SEEN=(()=>{try{const v=+localStorage.getItem('at-seen');return v>0?v:0}catch{return 0}})()
+try{localStorage.setItem('at-seen',String(Date.now()))}catch{}
+const localInput=ms=>{try{return new Date(ms-new Date(ms).getTimezoneOffset()*60000).toISOString().slice(0,16)}catch{return''}}
+function openDigest(){
+  DET=null
+  DG={since:LAST_SEEN||Date.now()-24*3600e3,pick:0,entries:null}
+  openSheet('Digest','what happened while you were away')
+  renderDigest();loadDigest()
+}
+function setSince(ms,pick){
+  if(!DG||!Number.isFinite(ms))return
+  DG.since=Math.round(ms);DG.pick=pick;DG.entries=null
+  renderDigest();loadDigest()
+}
+async function loadDigest(){
+  if(!DG)return
+  const since=DG.since
+  let entries=[]
+  try{const r=await fetch('/digest?since='+since);const j=r.ok?await r.json():null;entries=j&&Array.isArray(j.entries)?j.entries:[]}catch{}
+  if(DG&&DG.since===since){DG.entries=entries;renderDigest()}
+}
+function renderDigest(){
+  if(!DG)return
+  const bar=RANGES.map(([h,label],i)=>`<button class="act${DG.pick===i?' on':''}" type="button" data-i="${i}">${label}</button>`).join('')
+    +`<input type="datetime-local" id="dg-when" aria-label="Start of the digest window" value="${localInput(DG.since)}">`
+  const e=DG.entries
+  const rows=!e?'<div class="hint">loading…</div>'
+    :!e.length?'<div class="hint">nothing moved in this window</div>'
+    :e.map(x=>{
+      const bits=[]
+      if(+x.turns>0)bits.push(`<b>${+x.turns}</b> turns`)
+      if(Number.isFinite(+x.costDeltaUSD)&&+x.costDeltaUSD>0)bits.push(`<b>+${money(+x.costDeltaUSD)}</b>`)
+      if(+x.durationMs>0)bits.push(`${dur(x.durationMs)} working`)
+      if(x.started)bits.push('started')
+      if(x.ended)bits.push('ended')
+      const prs=(x.prs||[]).map(p=>`<a class="pr" href="${esc(href(p.url))}" target="_blank" rel="noopener noreferrer">#${esc(p.number)}</a>`).join(' ')
+      // a live session drills in: a real <button>, so it is reachable by
+      // keyboard and announced as clickable, not a div with a pointer cursor
+      const cls=`row big${x.ended?' done':''}`
+      const head=`<span class="d"></span><span class="v">${esc(x.name||x.sessionId)}</span><span class="r">${+x.lastAt>0?`<span class="t-ago" data-at="${+x.lastAt}"></span>`:''}</span>`
+      return`<div class="sec">${S.has(x.sessionId)?`<button class="${cls}" type="button" data-sid="${esc(x.sessionId)}">${head}</button>`:`<div class="${cls}">${head}</div>`}
+        <div class="hint">${esc(x.title||'no title')}</div>
+        ${bits.length||prs?`<div class="stats">${bits.map(v=>`<span>${v}</span>`).join('')}${prs?`<span>${prs}</span>`:''}</div>`:''}</div>`
+    }).join('')
+  paint(`<div class="bar">${bar}</div><div class="hint">since ${esc(when(DG.since))}${e?` · ${e.length} session${e.length===1?'':'s'}`:''}</div>${rows}`)
+}
+
+// One delegated handler for both panels; the range buttons and the clickable
+// digest rows live inside markup that is rebuilt on every render.
+on($('sheet-body'),'click',e=>{
+  const t=e.target
+  if(!t||!t.closest)return
+  const pick=t.closest('[data-i]')
+  if(pick){const i=+pick.dataset.i,h=RANGES[i]&&RANGES[i][0];return setSince(h?Date.now()-h*3600e3:LAST_SEEN||Date.now()-24*3600e3,i)}
+  const row=t.closest('[data-sid]')
+  if(row&&!t.closest('a'))openDetail(row.dataset.sid)
+})
+// toggle does not bubble — capture phase is how one listener sees them all.
+on($('sheet-body'),'toggle',e=>{
+  const t=e.target
+  if(t&&t.dataset&&t.dataset.wf!=null)WFOPEN.set(String(t.dataset.wf),!!t.open)
+},true)
+on($('sheet-body'),'change',e=>{
+  if(!e.target||e.target.id!=='dg-when')return
+  setSince(Date.parse(e.target.value),-1)
+})
+// A card opens its own detail; links and the export menu keep their behaviour.
+on($('sessions'),'click',e=>{
+  const t=e.target
+  if(!t||!t.closest||t.closest('a,summary,.dl'))return
+  const card=t.closest('.card')
+  if(card&&card.dataset.id)openDetail(card.dataset.id)
+})
+
 const link=$('link')
 const es=new EventSource('/events')
 es.onopen=()=>{link.classList.remove('off');link.textContent='watching'}
@@ -172,6 +441,9 @@ es.onmessage=e=>{
   if(!d.partial){S=new Map();$('empty').textContent='No agent sessions on this machine.';if(d.host)$('host').textContent=d.host+(d.port?':'+d.port:'')}
   for(const s of d.sessions||[])if(s&&s.id)S.set(s.id,d.partial?{...(S.get(s.id)||{}),...s}:s)
   render()
+  // Keep an open detail panel live: refetch when this session moved, and on
+  // any full snapshot — that is also how a vanished session is discovered.
+  if(DET&&(!d.partial||(d.sessions||[]).some(s=>s&&s.id===DET.id)))loadDetail()
 }
 setInterval(renderTimes,1000)
 </script>

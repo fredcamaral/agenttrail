@@ -307,6 +307,12 @@ test('/export&format=md 404s when distill refuses, and accepts a sync iterable',
   await withServer(lazy, async ({ base }) => {
     assert.equal((await get(base, '/export?session=ghost&format=md')).status, 404)
   })
+  const empty = stubAdapter({ distill: async function* () {} })
+  await withServer(empty, async ({ base }) => {
+    const r = await get(base, '/export?session=ghost&format=md')
+    assert.equal(r.status, 404, 'an empty distill is an unknown session, not a 200 with an empty body')
+    assert.match(await r.text(), /cannot distill/)
+  })
   const sync = stubAdapter({ distill: id => ['# ', id, '\n'] })
   await withServer(sync, async ({ base }) => {
     const r = await get(base, '/export?session=sess-a&format=md')
