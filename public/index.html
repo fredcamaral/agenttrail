@@ -6,14 +6,21 @@
 <meta name="theme-color" content="#000000">
 <meta name="description" content="Every coding-agent session on this machine, live.">
 <title>agenttrail</title>
-<link id="fav" rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%201000%201000%22%3E%3Crect%20width=%221000%22%20height=%221000%22%20rx=%22210%22%20fill=%22%2317171a%22/%3E%3Cg%20fill=%22none%22%20stroke=%22%23fff%22%20stroke-width=%2292%22%20stroke-linecap=%22round%22%20stroke-linejoin=%22round%22%3E%3Cpath%20d=%22M180%20810C278%20617%20363%20405%20445%20180C467%20120%20535%20120%20560%20180C650%20414%20733%20625%20820%20810%22/%3E%3Cpath%20d=%22M180%20810C300%20704%20430%20646%20610%20590%22/%3E%3C/g%3E%3Ccircle%20cx=%22180%22%20cy=%22810%22%20r=%2274%22%20fill=%22%23fff%22/%3E%3Ccircle%20cx=%22610%22%20cy=%22590%22%20r=%2274%22%20fill=%22%23fff%22/%3E%3Ccircle%20cx=%22820%22%20cy=%22810%22%20r=%2274%22%20fill=%22%23fff%22/%3E%3Ccircle%20cx=%22820%22%20cy=%22810%22%20r=%2238%22%20fill=%22%23FFB21A%22/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%201000%201000%22%3E%3Crect%20width=%221000%22%20height=%221000%22%20rx=%22210%22%20fill=%22%2317171a%22/%3E%3Cg%20fill=%22none%22%20stroke=%22%23fff%22%20stroke-width=%2292%22%20stroke-linecap=%22round%22%20stroke-linejoin=%22round%22%3E%3Cpath%20d=%22M180%20810C278%20617%20363%20405%20445%20180C467%20120%20535%20120%20560%20180C650%20414%20733%20625%20820%20810%22/%3E%3Cpath%20d=%22M180%20810C300%20704%20430%20646%20610%20590%22/%3E%3C/g%3E%3Ccircle%20cx=%22180%22%20cy=%22810%22%20r=%2274%22%20fill=%22%23fff%22/%3E%3Ccircle%20cx=%22610%22%20cy=%22590%22%20r=%2274%22%20fill=%22%23fff%22/%3E%3Ccircle%20cx=%22820%22%20cy=%22810%22%20r=%2274%22%20fill=%22%23fff%22/%3E%3Ccircle%20cx=%22820%22%20cy=%22810%22%20r=%2238%22%20fill=%22%23FFB21A%22/%3E%3C/svg%3E">
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('at-theme')==='light'?'light':'dark'}catch{document.documentElement.dataset.theme='dark'}</script>
 <style>
-:root{color-scheme:dark;--bg:#000;--surface:#181818;--raised:#1f1f1f;--hover:#272727;--line:#313131;--text:#fff;--soft:#d1d1d1;--dim:#9b9b9b;--faint:#686868;--accent:#e9a23b;--accent-bg:#2e220f;--danger:#db6b67;--success:#7aa36a;--complete-text:#70a784;--complete-bg:rgba(63,127,87,.18);--complete-weight:500;--working-border:#1d2b22;--working-bg:#141f18;--watch-ring:#172015;--overlay:#181818;--shadow-soft:rgba(0,0,0,.24);--shadow-strong:#000;--agent-openai:#e8e8ea;--font:"Geist","Manrope",sans-serif;--mono:"Geist Mono",monospace;--ease:cubic-bezier(.32,.72,0,1);--ease-out:cubic-bezier(.23,1,.32,1)}
-:root[data-theme="light"]{color-scheme:light;--bg:#fff;--surface:rgb(0 0 0/.025);--raised:rgb(0 0 0/.05);--hover:rgb(0 0 0/.07);--line:rgb(0 0 0/.14);--text:#000;--soft:rgb(0 0 0/.78);--dim:#666;--faint:rgb(0 0 0/.48);--accent:color-mix(in srgb,#e9a23b 64%,#000);--accent-bg:rgb(233 162 59/.16);--success:#3f7f57;--complete-text:#3f7f57;--complete-bg:rgb(63 127 87/.18);--complete-weight:600;--working-border:rgb(63 127 87/.24);--working-bg:rgb(63 127 87/.10);--watch-ring:rgb(63 127 87/.14);--overlay:#fbfaf8;--shadow-soft:rgb(0 0 0/.10);--shadow-strong:rgb(0 0 0/.14);--agent-openai:#313131}
+/* Type scale: five steps, no ad-hoc sizes. Spacing is a 4px scale, bar a few
+   optical insets and the touch-target floors the phone query needs. */
+:root{--fs-0:10px;--fs-1:11px;--fs-2:12px;--fs-3:13px;--fs-4:14px;--card-min:320px;--ind-step:12px;
+--font:"Geist","Manrope",sans-serif;--mono:"Geist Mono",monospace;--ease:cubic-bezier(.32,.72,0,1);--ease-out:cubic-bezier(.23,1,.32,1)}
+/* Both themes define every colour token; text tints clear 4.5:1 on their surface. */
+:root{color-scheme:dark;--bg:#000;--surface:#1f1f1f;--raised:#1f1f1f;--hover:#272727;--line:#313131;--text:#fff;--soft:#d1d1d1;--dim:#9b9b9b;--faint:#8a8a8a;--accent:#e9a23b;--accent-bg:#2e220f;--danger:#e0817d;--success:#7aa36a;--complete-text:#70a784;--complete-weight:500;--working-border:#2f4a39;--working-bg:#141f18;--watch-ring:#172015;--overlay:#181818;--shadow-soft:0 1px 2px rgb(0 0 0/.55),0 8px 22px rgb(0 0 0/.4);--shadow-strong:0 24px 70px rgb(0 0 0/.65);--agent-openai:#e8e8ea}
+:root[data-theme="light"]{color-scheme:light;--bg:#fff;--surface:rgb(0 0 0/.05);--raised:#fff;--hover:rgb(0 0 0/.07);--line:rgb(0 0 0/.14);--text:#000;--soft:rgb(0 0 0/.78);--dim:#5f5f5f;--faint:rgb(0 0 0/.58);--accent:color-mix(in srgb,#e9a23b 64%,#000);--accent-bg:rgb(233 162 59/.16);--danger:#b3403c;--success:#3f7f57;--complete-text:#3f7f57;--complete-weight:600;--working-border:rgb(63 127 87/.42);--working-bg:rgb(63 127 87/.09);--watch-ring:rgb(63 127 87/.14);--overlay:#fbfaf8;--shadow-soft:0 1px 2px rgb(0 0 0/.05),0 6px 18px rgb(0 0 0/.07);--shadow-strong:0 20px 60px rgb(0 0 0/.18);--agent-openai:#313131}
 *{box-sizing:border-box;margin:0}
-html{background:var(--bg)}
-body{min-width:320px;min-height:100dvh;background:var(--bg);color:var(--text);font:400 14px/20px var(--font);letter-spacing:-.01em}
+html{background:var(--bg);scrollbar-color:var(--line) transparent}
+body{min-width:320px;min-height:100dvh;background:var(--bg);color:var(--text);font:400 var(--fs-4)/20px var(--font);letter-spacing:-.01em;accent-color:var(--accent);caret-color:var(--accent);overflow-wrap:break-word}
+::selection{background:var(--accent-bg);color:var(--text)}
+:root:has(dialog[open]){overflow:hidden}
 body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.025;z-index:4;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E")}
 button{font:inherit;-webkit-tap-highlight-color:transparent}
 button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -22,98 +29,134 @@ a{color:var(--accent)}
 .brand{display:flex;align-items:center;gap:12px;min-width:0}
 .brand svg{flex:none;width:28px;height:28px;border-radius:7px}
 .brand-name{font-weight:600}
-.brand-host{color:var(--dim);font:400 12px/16px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.status{display:flex;justify-self:end;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.badge{display:flex;align-items:center;gap:8px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;color:var(--dim);white-space:nowrap;font-size:12px;line-height:16px}
+.brand-host{color:var(--dim);font:400 var(--fs-2)/16px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status,#counts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.status{justify-self:end;justify-content:flex-end}
+.badge{display:flex;align-items:center;gap:8px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;color:var(--dim);white-space:nowrap;font:400 var(--fs-2)/16px var(--font);font-variant-numeric:tabular-nums}
 .badge.working{border-color:var(--working-border);color:var(--success);background:var(--working-bg)}
 .badge.working .dot{background:var(--success);animation:working-pulse 1.6s ease-in-out infinite}
 .dot{width:6px;height:6px;border-radius:50%;background:var(--faint)}
 @keyframes working-pulse{50%{opacity:.35}}
-.watching{display:flex;align-items:center;gap:8px;color:var(--faint);font-size:12px}
+.watching{display:flex;align-items:center;gap:8px;color:var(--faint);font-size:var(--fs-2)}
 .watching:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--success);box-shadow:0 0 0 4px var(--watch-ring)}
-.watching.off:before{background:var(--danger);box-shadow:none}
-.theme-toggle{display:flex;align-items:center;gap:8px;min-height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--dim);cursor:pointer;font-size:12px;line-height:16px;font-weight:500;transition:color 250ms var(--ease-out),background 250ms var(--ease-out)}
+.watching.off{color:var(--danger)}
+.watching.off:before{background:var(--danger);box-shadow:none;animation:working-pulse 1s ease-in-out infinite}
+.theme-toggle{display:flex;align-items:center;gap:8px;min-height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--dim);cursor:pointer;font:500 var(--fs-2)/16px var(--font);transition:color 250ms var(--ease-out),background 250ms var(--ease-out)}
 .theme-toggle:hover{color:var(--text);background:var(--hover)}
 .theme-toggle:active{transform:scale(.98)}
 .theme-track{position:relative;width:32px;height:16px;border-radius:8px;background:var(--hover);box-shadow:inset 0 0 0 1px var(--line);transition:background 250ms var(--ease-out)}
 .theme-thumb{position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:4px;background:var(--dim);transition:transform 250ms var(--ease-out),background 250ms var(--ease-out)}
 :root[data-theme="light"] .theme-track{background:var(--accent-bg)}
 :root[data-theme="light"] .theme-thumb{transform:translateX(16px);background:var(--accent)}
-.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));padding:20px 24px 64px}
-.empty{padding:64px 24px;color:var(--dim);text-align:center}
-.card{position:relative;padding:12px 14px 12px 28px;border:1px solid var(--line);border-radius:14px;background:var(--overlay);box-shadow:0 12px 40px var(--shadow-strong);animation:reveal 500ms var(--ease) both}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--card-min)),1fr));padding:20px 24px 64px}
+/* flex column so every card's action row lands on the same baseline in a row */
+.card{display:flex;flex-direction:column;position:relative;padding:12px 12px 12px 28px;border:1px solid var(--line);border-radius:14px;background:var(--overlay);box-shadow:var(--shadow-soft);cursor:pointer;animation:reveal 420ms var(--ease) both;transition:border-color 200ms var(--ease-out),background 200ms var(--ease-out)}
+.card:hover{border-color:var(--faint);background:var(--raised)}
+/* status reads twice: a colour rail for scanning, a word for meaning */
 .card:before{content:"";position:absolute;left:12px;top:17px;width:6px;height:6px;border-radius:50%;background:var(--faint)}
+.card.busy{border-color:var(--working-border)}
 .card.busy:before{background:var(--success);animation:working-pulse 1.6s ease-in-out infinite}
 .card.idle:before{background:var(--accent)}
 .card.shell:before{background:var(--dim)}
-.card.ended{opacity:.55;box-shadow:none}
-@keyframes reveal{from{opacity:0;transform:translateY(16px);filter:blur(4px)}to{opacity:1;transform:none;filter:blur(0)}}
+.card.ended{background:transparent;border-color:var(--hover);box-shadow:none}
+.card.ended .name,.card.ended .title{color:var(--dim)}
+.card.ended .meta,.card.ended .tool{color:var(--faint)}
+@keyframes reveal{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .card-head{display:flex;align-items:center;gap:8px;min-width:0}
-.name{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.src{display:inline-flex;flex:none;align-items:center;gap:4px;padding:1px 6px;border-radius:999px;background:var(--surface);font:600 10px/16px var(--mono);letter-spacing:.04em;text-transform:uppercase}
-.src svg{width:11px;height:11px}
-.elapsed{margin-left:auto;flex:none;color:var(--faint);font-size:11.5px;font-variant-numeric:tabular-nums}
-.title{margin-top:6px;color:var(--text);font-size:12.5px;line-height:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.name{flex:1;min-width:0;font-weight:600;font-size:var(--fs-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.src{display:inline-flex;flex:none;align-items:center;justify-content:center;width:18px;height:18px;border-radius:6px;background:var(--surface);font:600 var(--fs-0)/18px var(--mono)}
+.src svg{width:12px;height:12px}
+.st{flex:none;color:var(--faint);font:600 var(--fs-0)/16px var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.card.busy .st{color:var(--success)}
+.card.idle .st{color:var(--accent)}
+.card.shell .st{color:var(--dim)}
+.title{margin-top:8px;color:var(--text);font-size:var(--fs-3);line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .title.none{color:var(--dim)}
-.meta{margin-top:5px;color:var(--dim);font:400 11.5px/16px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta{margin-top:4px;color:var(--dim);font:400 var(--fs-1)/16px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .meta .br{color:var(--accent)}
 .meta .sep{color:var(--faint)}
-.tool{display:flex;gap:8px;align-items:baseline;margin-top:5px;color:var(--dim);font:400 11.5px/16px var(--mono);overflow:hidden;white-space:nowrap}
+/* always rendered, so a tool starting or ending never resizes the card */
+.tool{display:flex;gap:8px;align-items:baseline;margin-top:4px;min-height:16px;color:var(--dim);font:400 var(--fs-1)/16px var(--mono);overflow:hidden;white-space:nowrap}
+.tool.none{color:var(--faint)}
 .tool .tn{color:var(--accent);flex:none}
 .tool .td{overflow:hidden;text-overflow:ellipsis}
 .tool .ta{margin-left:auto;color:var(--faint);flex:none;font-variant-numeric:tabular-nums}
-.stats{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--hover);color:var(--faint);font:400 11px/16px var(--mono);font-variant-numeric:tabular-nums}
+.stats{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--hover);color:var(--faint);font:400 var(--fs-1)/16px var(--mono);font-variant-numeric:tabular-nums}
 .stats b{color:var(--soft);font-weight:600}
 .stats .ok{color:var(--complete-text);font-weight:var(--complete-weight)}
 .stats .run{color:var(--success)}
-.foot{display:flex;align-items:center;gap:8px;margin-top:8px;min-height:24px}
-.pr{padding:1px 7px;border-radius:999px;color:var(--accent);background:var(--accent-bg);font:600 11px/16px var(--mono);text-decoration:none}
+.foot{display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:8px;min-height:24px}
+.pr{padding:1px 8px;border-radius:999px;color:var(--accent);background:var(--accent-bg);font:600 var(--fs-1)/16px var(--mono);text-decoration:none}
 .pr:hover{color:var(--text)}
 .dl{position:relative}
 .foot .act{margin-left:auto}
-.dl>summary{display:flex;align-items:center;gap:6px;padding:2px 8px;border:1px solid var(--line);border-radius:8px;color:var(--dim);cursor:pointer;list-style:none;font-size:11px;line-height:16px}
+.dl>summary{display:flex;align-items:center;gap:8px;padding:2px 8px;border:1px solid var(--line);border-radius:8px;color:var(--dim);cursor:pointer;list-style:none;font:400 var(--fs-1)/16px var(--font)}
 summary::-webkit-details-marker{display:none}
 .dl>summary:hover{color:var(--text);background:var(--hover)}
-.dl-menu{position:absolute;right:0;bottom:calc(100% + 6px);z-index:2;display:flex;flex-direction:column;min-width:148px;padding:4px;border:1px solid var(--line);border-radius:10px;background:var(--raised);box-shadow:0 12px 40px var(--shadow-strong)}
-.dl-menu a{padding:6px 10px;border-radius:6px;color:var(--soft);text-decoration:none;font-size:12px}
+.dl-menu{position:absolute;right:0;bottom:calc(100% + 8px);z-index:2;display:flex;flex-direction:column;min-width:148px;padding:4px;border:1px solid var(--line);border-radius:10px;background:var(--raised);box-shadow:var(--shadow-strong)}
+.dl-menu a{padding:8px 12px;border-radius:6px;color:var(--soft);text-decoration:none;font-size:var(--fs-2)}
 .dl-menu a:hover{color:var(--text);background:var(--hover)}
-.act{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--dim);cursor:pointer;font:500 12px/16px var(--font)}
+.act{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--dim);cursor:pointer;font:500 var(--fs-2)/16px var(--font);transition:color 160ms var(--ease-out),background 160ms var(--ease-out)}
 .act:hover{color:var(--text);background:var(--hover)}
 .act.on{color:var(--text);border-color:var(--accent);background:var(--accent-bg)}
-.card .act{min-height:0;padding:2px 8px;font-weight:400;font-size:11px}
-dialog{width:min(760px,100%);max-height:88dvh;margin:auto;padding:0;border:1px solid var(--line);border-radius:16px;background:var(--overlay);color:var(--text);box-shadow:0 24px 80px var(--shadow-strong)}
-dialog::backdrop{background:rgb(0 0 0/.6)}
+.card .act{min-height:0;padding:2px 8px;font-weight:400;font-size:var(--fs-1)}
+/* one authored moment: the sheet rises, the backdrop fades, both reversible */
+dialog{width:min(760px,100%);max-height:88dvh;margin:auto;padding:0;border:1px solid var(--line);border-radius:16px;background:var(--overlay);color:var(--text);box-shadow:var(--shadow-strong);opacity:0;transform:translateY(10px) scale(.99);transition:opacity 220ms var(--ease-out),transform 220ms var(--ease-out),overlay 220ms allow-discrete,display 220ms allow-discrete}
+dialog[open]{opacity:1;transform:none}
+dialog::backdrop{background:rgb(0 0 0/.6);backdrop-filter:blur(2px);opacity:0;transition:opacity 220ms var(--ease-out),overlay 220ms allow-discrete,display 220ms allow-discrete}
+dialog[open]::backdrop{opacity:1}
+@starting-style{dialog[open]{opacity:0;transform:translateY(10px) scale(.99)}dialog[open]::backdrop{opacity:0}}
 .sheet{display:flex;flex-direction:column;max-height:88dvh}
-.sheet-head{display:flex;align-items:center;gap:10px;min-width:0;padding:12px 16px;border-bottom:1px solid var(--hover)}
-.sheet-head b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sheet-head .sub{color:var(--dim);font:400 11.5px/16px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sheet-head .act{margin-left:auto;flex:none}
-.sheet-body{padding:14px 16px 20px;overflow:auto;overscroll-behavior:contain}
-.sec{margin-top:18px}
+.sheet-head{display:flex;align-items:center;gap:12px;min-width:0;padding:12px 16px;border-bottom:1px solid var(--hover)}
+.sheet-head b{flex:none;max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet-head .sub{flex:1;min-width:0;color:var(--dim);font:400 var(--fs-1)/16px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet-head .act{flex:none}
+.sheet-body{padding:16px 16px 20px;overflow:auto;overscroll-behavior:contain}
+/* inside the sheet a group is bounded by its own heading, so a rule above the
+   numbers would tie them to the session below instead of the one above */
+.sheet-body .stats{border-top:0;padding-top:0}
+.sec{margin-top:20px}
 .sec:first-child{margin-top:0}
-.sec>h2{margin-bottom:4px;color:var(--faint);font:600 10.5px/16px var(--mono);letter-spacing:.08em;text-transform:uppercase}
-.row{display:flex;gap:8px;align-items:baseline;padding:4px 0;border-top:1px solid var(--hover);font:400 11.5px/17px var(--mono);min-width:0}
+.sec>h2{margin-bottom:4px;color:var(--faint);font:600 var(--fs-0)/16px var(--mono);letter-spacing:.08em;text-transform:uppercase}
+/* --ind is the tree depth; the step shrinks on a phone instead of eating the row */
+.row{display:flex;gap:8px;align-items:baseline;margin-left:calc(var(--ind,0)*var(--ind-step));padding:4px 0;border-top:1px solid var(--hover);font:400 var(--fs-1)/17px var(--mono);min-width:0}
 summary.row{cursor:pointer;list-style:none}
 summary.row:hover{background:var(--hover)}
 .row .d{flex:none;align-self:flex-start;width:6px;height:6px;margin-top:5px;border-radius:50%;background:var(--faint)}
 .row.running .d{background:var(--success);animation:working-pulse 1.6s ease-in-out infinite}
-.row.done .d{background:var(--complete-text)}
+/* hollow reads as finished even in a still frame, where the pulse cannot */
+.row.done .d{background:transparent;box-shadow:inset 0 0 0 2px var(--complete-text)}
 .row .k{flex:none;color:var(--accent)}
 .row .v{color:var(--soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row .r{flex:none;margin-left:auto;padding-left:8px;color:var(--faint);font-variant-numeric:tabular-nums}
 .row.done .v{color:var(--dim)}
 button.row{width:100%;border:0;border-top:1px solid var(--hover);background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 button.row:hover{background:var(--hover)}
-.row.big{font:400 12.5px/18px var(--font);letter-spacing:-.01em}
+.row.big{font:400 var(--fs-3)/18px var(--font);letter-spacing:-.01em}
 .row.big .v{white-space:normal}
-.hint{padding:6px 0;color:var(--faint);font:400 11.5px/17px var(--mono)}
-.bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
-.bar input{min-height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--soft);font:400 12px/16px var(--mono);color-scheme:inherit}
+.hint{padding:8px 0;color:var(--faint);font:400 var(--fs-1)/17px var(--mono);overflow-wrap:anywhere}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.bar input{min-height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--soft);font:400 var(--fs-2)/16px var(--mono);color-scheme:inherit}
 .dls{display:flex;flex-wrap:wrap;gap:8px}
-.dls a{padding:4px 10px;border:1px solid var(--line);border-radius:8px;color:var(--soft);text-decoration:none;font-size:12px}
+.dls a{padding:4px 12px;border:1px solid var(--line);border-radius:8px;color:var(--soft);text-decoration:none;font-size:var(--fs-2)}
 .dls a:hover{color:var(--text);background:var(--hover)}
-@media(max-width:720px){.topbar{grid-template-columns:minmax(0,1fr);gap:8px}.status{justify-self:start}.grid{grid-template-columns:minmax(0,1fr);padding:16px 12px 48px}
-dialog{width:100%;max-width:100%;max-height:100dvh;height:100dvh;border:0;border-radius:0}.sheet{max-height:100dvh;height:100dvh}}
+/* "nothing here" is a designed state, on a fresh machine and in a quiet window alike */
+.empty{display:grid;gap:8px;justify-items:center;padding:80px 24px;text-align:center}
+.empty b{font:600 var(--fs-4)/22px var(--font);color:var(--text)}
+.empty span{max-width:46ch;color:var(--dim);font-size:var(--fs-2);line-height:18px}
+.sheet-body .empty{padding:44px 8px}
+@media(min-width:1400px){.grid{--card-min:340px;gap:16px;padding:24px 32px 72px}}
+@media(max-width:720px){:root{--ind-step:8px}
+.topbar{grid-template-columns:minmax(0,1fr);gap:8px}.status{justify-self:start}
+.grid{padding:16px 12px 48px}.empty{padding:56px 20px}
+dialog{width:100%;max-width:100%;max-height:100dvh;height:100dvh;border:0;border-radius:0}
+.sheet{max-height:100dvh;height:100dvh}
+.sheet-body{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+/* every control a thumb can reach clears 44px, not just the ones on a card */
+.act,.card .act,.dl>summary,.dls a,.dl-menu a{display:inline-flex;align-items:center;min-height:44px;padding:4px 12px}
+.theme-toggle,.bar input{min-height:44px}
+.pr{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border-radius:12px}
+button.row,summary.row{padding:14px 0}}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}}
 </style>
 </head>
@@ -123,7 +166,7 @@ dialog{width:100%;max-width:100%;max-height:100dvh;height:100dvh;border:0;border
   <div class="status"><span id="counts"></span><button class="act" id="digest-btn" type="button" onclick="openDigest()">digest</button><button class="theme-toggle" id="theme-toggle" type="button" role="switch" aria-checked="false" aria-label="Use light theme" onclick="toggleTheme()"><span id="theme-toggle-label">Light</span><span class="theme-track" aria-hidden="true"><span class="theme-thumb"></span></span></button><span class="watching" id="link">watching</span></div>
 </header>
 <main class="grid" id="sessions" aria-label="Agent sessions"></main>
-<div class="empty" id="empty">Connecting to the live monitor…</div>
+<div class="empty" id="empty"><b>Connecting to the monitor</b><span>Waiting for the first snapshot from the daemon on this machine.</span></div>
 <dialog id="sheet" aria-labelledby="sheet-title">
   <div class="sheet">
     <div class="sheet-head"><b id="sheet-title"></b><span class="sub" id="sheet-sub"></span><button class="act" type="button" onclick="closeSheet()" aria-label="Close (esc)">esc</button></div>
@@ -157,10 +200,13 @@ const hasFile=s=>s.transcriptPath!==null
 let S=new Map()
 const cards=new Map()
 
+// Icon only: on a machine running one source, the word was the least
+// informative pixel on the card. The name stays reachable as a tooltip.
 function srcBadge(src){const c=agentColor(src),ic=agentIcon(src)
-  return`<span class="src" style="color:${c}">${ic?`<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="${c}" d="${ic}"/></svg>`:esc(agentGlyph(src))}${esc(src||'?')}</span>`}
+  return`<span class="src" style="color:${c}" title="${esc(src||'unknown source')}">${ic?`<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="${c}" d="${ic}"/></svg>`:esc(agentGlyph(src))}</span>`}
 
 function cardHtml(s){
+  const st=stat(s),nm=String(s.name||s.title||s.id)
   const tool=s.currentTool||(s.recentTools||[])[0]
   const todos=s.todos||[],tdone=todos.filter(t=>t.status==='completed').length
   // list views trim agents[]; agentCount/agentsRunning carry the honest totals
@@ -171,13 +217,14 @@ function cardHtml(s){
   if(+s.turns>0)stats.push(`<span><b>${+s.turns}</b> turns</span>`)
   if(todos.length)stats.push(`<span${tdone===todos.length?' class="ok"':''}>todos <b>${tdone}/${todos.length}</b></span>`)
   if(an)stats.push(`<span>agents <b>${an}</b>${arun?` <span class="run">${arun} running</span>`:''}</span>`)
+  if(+s.startedAt>0)stats.push(`<span title="since the session started">up <span class="t-ago" data-at="${+s.startedAt}"></span></span>`)
   if(+s.lastEventAt>0)stats.push(`<span title="since the last transcript event">seen <span class="t-ago" data-at="${+s.lastEventAt}"></span></span>`)
   const prs=(s.prs||[]).slice(0,4).map(p=>`<a class="pr" href="${esc(href(p.url))}" target="_blank" rel="noopener noreferrer" title="${esc(p.repo||'')}">#${esc(p.number)}</a>`).join('')
   const q=encodeURIComponent(String(s.id??''))
-  return`<div class="card-head">${srcBadge(s.source)}<span class="name">${esc(s.name||s.title||s.id)}</span><span class="elapsed" title="since the session started">${+s.startedAt>0?`<span class="t-ago" data-at="${+s.startedAt}"></span>`:''}</span></div>
-    <div class="title${s.title?'':' none'}">${esc(s.title||'no title yet')}</div>
-    <div class="meta">${esc(base(s.cwd)||'—')}${s.gitBranch?` <span class="sep">·</span> <span class="br">${esc(s.gitBranch)}</span>`:''}${s.model?` <span class="sep">·</span> ${esc(s.model)}`:''}${s.account?` <span class="sep">·</span> ${esc(s.account)}`:''}</div>
-    ${tool?`<div class="tool"><span class="tn">${esc(tool.name)}</span><span class="td">${esc(tool.detail||'')}</span><span class="ta t-ago" data-at="${+tool.at||0}"></span></div>`:''}
+  return`<div class="card-head">${srcBadge(s.source)}<span class="name" title="${esc(nm)}">${esc(nm)}</span><span class="st">${esc(st)}</span></div>
+    <div class="title${s.title?'':' none'}" title="${esc(s.title||'')}">${esc(s.title||'no title yet')}</div>
+    <div class="meta" title="${esc(s.cwd||'')}">${esc(base(s.cwd)||'—')}${s.gitBranch?` <span class="sep">·</span> <span class="br">${esc(s.gitBranch)}</span>`:''}${s.model?` <span class="sep">·</span> ${esc(s.model)}`:''}${s.account?` <span class="sep">·</span> ${esc(s.account)}`:''}</div>
+    <div class="tool${tool?'':' none'}"${tool&&tool.detail?` title="${esc(tool.detail)}"`:''}>${tool?`<span class="tn">${esc(tool.name)}</span><span class="td">${esc(tool.detail||'')}</span><span class="ta t-ago" data-at="${+tool.at||0}"></span>`:'<span class="td">—</span>'}</div>
     ${stats.length?`<div class="stats">${stats.join('')}</div>`:''}
     <div class="foot">${prs}<button class="act" type="button" data-open>details</button>${hasFile(s)?`<details class="dl"><summary>export</summary><div class="dl-menu"><a href="/export?session=${q}&amp;format=jsonl" download>Raw JSONL</a><a href="/export?session=${q}&amp;format=md" download>Markdown</a></div></details>`:''}</div>`
 }
@@ -185,6 +232,8 @@ function cardHtml(s){
 function renderCounts(){
   const c={busy:0,idle:0,shell:0,ended:0}
   for(const s of S.values())c[stat(s)]++
+  // a machine with nothing running says so once, in the middle, not as four zeros
+  if(!S.size)return void($('counts').innerHTML='')
   $('counts').innerHTML=`<span class="badge${c.busy?' working':''}"><span class="dot"></span>${c.busy} busy</span><span class="badge">${c.idle} idle</span>${c.shell?`<span class="badge">${c.shell} shell</span>`:''}<span class="badge">${c.ended} ended</span>`
 }
 
@@ -285,7 +334,7 @@ function agentRows(list){
   const html=rows.map(({a,depth})=>{
     const run=a.status==='running'
     const age=run?(+a.startedAt>0?`<span class="t-ago" data-at="${+a.startedAt}"></span>`:''):(+a.lastEventAt>+a.startedAt?dur(a.lastEventAt-a.startedAt):'')
-    return`<div class="row ${run?'running':'done'}"${depth?` style="margin-left:${depth*14}px"`:''}><span class="d"></span><span class="k">${esc(a.type||'agent')}</span><span class="v">${esc(a.description||a.agentId)}</span><span class="r">${a.model?esc(a.model)+' · ':''}${age}</span></div>`
+    return`<div class="row ${run?'running':'done'}"${depth?` style="--ind:${depth}"`:''}><span class="d"></span><span class="k">${esc(a.type||'agent')}</span><span class="v">${esc(a.description||a.agentId)}</span><span class="r">${a.model?esc(a.model)+' · ':''}${age}</span></div>`
   }).join('')
   return html+(all.length>rows.length?`<div class="hint">+${all.length-rows.length} more</div>`:'')
 }
@@ -385,7 +434,7 @@ function renderDigest(){
     +`<input type="datetime-local" id="dg-when" aria-label="Start of the digest window" value="${localInput(DG.since)}">`
   const e=DG.entries
   const rows=!e?'<div class="hint">loading…</div>'
-    :!e.length?'<div class="hint">nothing moved in this window</div>'
+    :!e.length?'<div class="empty"><b>Nothing moved in this window</b><span>No turns, no cost, no pull requests. Widen the range above to look further back.</span></div>'
     :e.map(x=>{
       const bits=[]
       if(+x.turns>0)bits.push(`<b>${+x.turns}</b> turns`)
@@ -438,7 +487,7 @@ es.onopen=()=>{link.classList.remove('off');link.textContent='watching'}
 es.onerror=()=>{link.classList.add('off');link.textContent='reconnecting…'}
 es.onmessage=e=>{
   let d;try{d=JSON.parse(e.data)}catch{return}
-  if(!d.partial){S=new Map();$('empty').textContent='No agent sessions on this machine.';if(d.host)$('host').textContent=d.host+(d.port?':'+d.port:'')}
+  if(!d.partial){S=new Map();$('empty').innerHTML='<b>No agent sessions here</b><span>Start Claude Code or opencode on this machine and it shows up within a second.</span>';if(d.host)$('host').textContent=d.host+(d.port?':'+d.port:'')}
   for(const s of d.sessions||[])if(s&&s.id)S.set(s.id,d.partial?{...(S.get(s.id)||{}),...s}:s)
   render()
   // Keep an open detail panel live: refetch when this session moved, and on

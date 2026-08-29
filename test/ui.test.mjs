@@ -221,10 +221,11 @@ test('a cyclic, self-parented or orphaned agent renders exactly once', async () 
   for (const d of ['AA', 'BB', 'CC', 'DD', 'EE', ...Array.from({ length: 12 }, (_, i) => `CH${i}`)]) {
     assert.equal(html.split(`>${d}<`).length - 1, 1, `${d} rendered once`)
   }
-  assert.match(html, /margin-left:126px/, 'the chain indents to the cap')
-  assert.ok(!/margin-left:1[4-9]\dpx|margin-left:[2-9]\d\dpx/.test(html), 'and never past it')
+  // depth ships as --ind so the indent step can shrink on a phone
+  assert.match(html, /--ind:9/, 'the chain indents to the cap')
+  assert.ok(!/--ind:(1\d|[2-9]\d)/.test(html), 'and never past it')
   assert.match(html, /subagents · 17/, 'the header counts every agent it drew')
-  assert.match(html, /margin-left:14px"><span class="d"><\/span><span class="k">agent<\/span><span class="v">EE/, 'a child of a drawn parent is indented')
+  assert.match(html, /--ind:1"><span class="d"><\/span><span class="k">agent<\/span><span class="v">EE/, 'a child of a drawn parent is indented')
 })
 
 test('a workflow group the reader closed stays closed when the panel repaints', async () => {
@@ -328,7 +329,54 @@ test('page keeps theme bootstrap, persisted toggle and drops the deleted familie
   for (const dead of ['fleet', 'inspector', 'expanded-node', 'expanded-plan', 'expanded-phase', 'plan-view', 'all-clear', 'switcher', 'canvas-hint', 'minimap', 'graph', 'PLAN.md', 'backfill', 'zoom', 'handoff', 'constellation']) {
     assert.ok(!HTML.includes(dead), `deleted: ${dead}`)
   }
-  // wave 2 added the detail panel and the digest to the same single file;
-  // the budget is deliberate, not a high-water mark — 40KB is the next wall.
-  assert.ok(HTML.length < 40000, `file is ${HTML.length} bytes`)
+  // wave 3 spent the last 40KB wall on the design system itself: a type scale,
+  // a depth scale, both-theme colour parity, sheet motion, three designed empty
+  // states and the touch/wide breakpoints. Still deliberate, not a high-water
+  // mark — 42KB is the next wall, and dead CSS comes out before it moves again.
+  assert.ok(HTML.length < 42000, `file is ${HTML.length} bytes`)
+})
+
+// A thumb needs ~44px, and every control the phone layout keeps reachable has to
+// clear it — not just the ones sitting on a card. The two row selectors earn it
+// with padding instead: .row aligns on the baseline, so a min-height would leave
+// the text stranded at the top of a tall box.
+test('every phone touch target clears the 44px floor', () => {
+  const phone = HTML.split('@media(max-width:720px){')[1].split('@media')[0].replace(/\/\*[\s\S]*?\*\//g, '')
+  const rules = phone.split('}').map(r => r.split('{'))
+  const tall = rules.filter(([, body]) => body && body.includes('min-height:44px'))
+    .flatMap(([sel]) => sel.split(',').map(s => s.trim()))
+  for (const sel of ['.act', '.card .act', '.dl>summary', '.dls a', '.dl-menu a', '.theme-toggle', '.bar input', '.pr']) {
+    assert.ok(tall.includes(sel), `${sel} is under 44px on a phone`)
+  }
+  const rows = rules.find(([sel]) => sel.includes('button.row'))
+  assert.match(rows[1], /padding:1[4-9]px 0/, 'drill-in rows and workflow summaries clear 44px by padding')
+})
+
+// The comment at the top of <style> claims a 4px spacing scale, and nothing was
+// checking it, so it drifted. Every spacing declaration is read here, not a
+// sampled few: what is left off the scale must be exactly the optical insets and
+// touch floors the comment names. deepEqual, not "includes" — a new off-scale
+// value fails, and so does an exemption that stopped being needed.
+test('spacing sits on the 4px scale, bar the exemptions the comment names', () => {
+  const CSS = HTML.split('<style>')[1].split('</style>')[0].replace(/\/\*[\s\S]*?\*\//g, '')
+  const SPACING = new Set(['padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+    'margin', 'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+    'gap', 'row-gap', 'column-gap', 'top', 'right', 'bottom', 'left', 'inset', '--ind-step', '--card-min'])
+  const off = new Set()
+  for (const decl of CSS.replace(/[{}]/g, ';').split(';')) {
+    const i = decl.indexOf(':')
+    if (i < 0) continue
+    const prop = decl.slice(0, i).trim().toLowerCase()
+    if (!SPACING.has(prop)) continue
+    for (const [, n] of decl.slice(i + 1).matchAll(/(\d+(?:\.\d+)?)px/g)) if (+n % 4) off.add(`${prop}:${n}px`)
+  }
+  assert.deepEqual([...off].sort(), [
+    'left:2px',        // .theme-thumb centres a 12px thumb in a 16px track
+    'margin-top:5px',  // .row .d centres a 6px dot on a 17px line box
+    'padding:14px',    // phone touch floors: .pr across, drill-in rows down
+    'padding:1px',     // .pr keeps its pill at 18px inside a 24px card footer
+    'padding:2px',     // .dl>summary and .card .act match at 22px in that footer
+    'top:17px',        // .card:before centres the status rail on the head row
+    'top:2px'          // .theme-thumb, as left:2px
+  ])
 })

@@ -1,7 +1,7 @@
 {
   "name": "agenttrail",
   "version": "0.2.0",
-  "description": "Live map of every coding-agent session on your machine: status, current tool, subagent tree, cost — read straight from the transcripts. One local daemon, no database, no dependencies.",
+  "description": "Live view of every coding-agent session on your machine: status, current tool, subagent and workflow tree, cost, a digest of what happened while you were away, and transcript downloads. One local daemon reading Claude Code and opencode transcripts directly. No hooks, no database, no dependencies.",
   "type": "module",
   "bin": {
     "agenttrail": "bin/agenttrail.mjs"
@@ -25,13 +25,16 @@
   "homepage": "https://github.com/fredcamaral/agenttrail#readme",
   "keywords": [
     "claude-code",
+    "opencode",
     "coding-agents",
     "ai-agents",
     "agent-observability",
     "agent-monitoring",
     "session-monitor",
     "subagents",
+    "workflows",
     "transcripts",
+    "digest",
     "live-dashboard",
     "local-first",
     "sse",
