@@ -1,15 +1,51 @@
+# agenttrail — dev notes
 
-<!-- agenttrail -->
-## agenttrail plan convention
-Maintain PLAN.md as the living plan. It is read by the project OWNER, not by you — write it for them.
-- nodes are COMPONENTS of the system being built (`## Plain-language name {#id}`), not phases or sprints; keep the map at 5-9 components regardless of repo size — grow tasks, not cards, and split a component only when one agent could no longer own it for a session
-- naming rule: titles are verb-led, plain-language, and CONCRETE — the owner can tell when it is done ("Read alerts out loud", "Watch the repo"). Never engineer-speak ("fs watcher + activity signal") and never vague vibes ("Decide what matters"); put the engineer phrasing on a `tech:` line under the heading
-- tasks inside a component: `- [ ] Plain outcome {#id}`, optional indented `tech:` line beneath; mark a task `[~]` BEFORE you start it and save PLAN.md immediately — this drives the live in-progress view; flip it to `[x]` the moment it completes, `[!]` if stuck (clear once unblocked). Never batch plan updates for the end of the session
-- when you mark a task `[~]`, add an indented `by: <your name>` line under it (claude, codex, cursor, …) and leave it there when done — it is the record of who did what
-- edges under a component heading: `needs: [id, id]` = must come after those components; `links: [id, id]` = interconnected with / talks to
-- `files: [src/audio/**, config.py]` under a component declares which paths it owns — keep it current; it is how the live view knows which component you are really working in, including when you revisit finished work
-- `{#id}`s are stable — never rename, only add or remove nodes
-- open tasks carry an indented `from:` line naming their provenance — `from: agent` when YOU are declaring it as your own imminent build intent (the owner corrects these on sight if wrong), `from: roadmap` when it comes from planning documents (durable intent, backloggable); omit when neither
-- new work NEVER creates a component by default: it lands as your session todos plus tasks under the component whose files it touches. Add a NEW component only when the system grows a durable new part. Durable is not a prediction — test it NOW: something else already depends on it (load-bearing), deleting it would change what the product does, you can name a plausible second task for it, and it owns files no component claims. Record the addition under `## decisions`. Time corrects mistakes cheaply: merge a card back into its neighbor if no second change ever comes; promote a task to a card when work keeps clustering in files its siblings never touch. Remove a component only when that part is deleted from the product
-- before ending a session, graduate your plan-worthy completed todos into PLAN.md as `[x]` tasks (with `by:`) — housekeeping todos stay out of the plan
-- record any plan-affecting decision under `## decisions` BEFORE implementing it
+A local dashboard that answers, live and retroactively: what is every
+coding-agent session on this machine doing right now, what subagents and
+workflows it spawned, what happened while I was away, and let me download any
+session transcript. One daemon per machine. It reads the agents' own transcript
+files directly — there are no hooks to install and no convention file to keep
+up to date.
+
+## Layout
+
+| Path | What lives there |
+|---|---|
+| `bin/agenttrail.mjs` | CLI, HTTP, SSE. Watches nothing itself. |
+| `lib/claude.mjs` | Claude Code adapter: `~/.claude` sessions, transcripts, subagents |
+| `lib/opencode.mjs` | opencode adapter: `opencode.db`, read-only (wave 2) |
+| `public/index.html` | The whole UI. One file, no build step. |
+| `test/*.test.mjs` | `node:test`, synthetic fixtures only |
+
+The adapter interface and the `Session` shape are specified in
+`docs/plans/2026-08-30-session-centric-pivot.md`. Adapters own all fs watching,
+tailing, and the event journal; the daemon only serves what they compute.
+
+## Rules
+
+- **Node >= 22, zero npm dependencies.** Stdlib only (`node:sqlite` covers
+  opencode). Never add a package, never add a build step.
+- **Read-only by construction.** The daemon observes. It never writes into a
+  repo, never edits agent state, never sends a prompt. Its only writes live
+  under `~/.agenttrail/`.
+- **Binds 127.0.0.1, and checks the `Host` header.** A loopback bind stops other
+  machines but not other origins: a page in your browser can rebind its own
+  domain to 127.0.0.1 and read transcripts same-origin. Every endpoint answers
+  403 unless the host is loopback, this machine's name, or a `*.ts.net` tailnet
+  name (what `tailscale serve` forwards). Any other front door needs that
+  allowlist widened — never a wider bind.
+- Transcripts are append-only and huge. Tail with persisted byte offsets, buffer
+  to the last newline, and sniff the record type before parsing a big line.
+- Tests never touch the real `~/.claude` or `~/.agenttrail`, and never write
+  outside a tmpdir fixture.
+
+## Test
+
+```bash
+node --test 'test/*.test.mjs'      # everything
+node --test test/server.test.mjs   # one file
+```
+
+Quote the glob: Node expands it itself, so the command works from any shell.
+`node --test test/` does **not** work on Node 24 — it resolves the directory as
+a module and reports one failing test named `test`. Never write it that way.
