@@ -57,31 +57,43 @@ Dark and light themes. One HTML file, no build step, no framework.
 Node 22 or newer, and nothing else. There are no dependencies to install.
 
 ```bash
-npx github:fredcamaral/agenttrail
-```
-
-Or from a checkout:
-
-```bash
 git clone https://github.com/fredcamaral/agenttrail
 cd agenttrail
-node bin/agenttrail.mjs
+scripts/install.sh
 ```
 
-Your browser opens on `http://localhost:5330` and every agent session on the
-machine is there. That is the whole setup. If 5330 is taken the daemon walks
-up until it finds a free port and prints where it landed.
+The installer puts the daemon behind a login service pointing at this checkout,
+activates it, and waits until it answers. Open `http://localhost:5330` and
+every agent session on the machine is there. That is the whole setup.
 
-Leave it running:
+It writes a launchd agent on macOS and a systemd user unit on Linux, so the
+daemon starts at login and comes back if it dies. The flags:
+
+```bash
+scripts/install.sh --port 5400    # bind somewhere else
+scripts/install.sh --tailnet      # also reach it from your phone, over your tailnet
+scripts/install.sh --dry-run      # print the plan, change nothing
+scripts/install.sh --uninstall    # stop it, remove the service, keep ~/.agenttrail
+```
+
+`--tailnet` puts `tailscale serve` in front of the daemon and prints the
+`https://<machine>.ts.net` address to open. Tailnet only, never funnel, so
+nothing is published to the internet.
+
+Or run it in the foreground and install nothing:
+
+```bash
+npx github:fredcamaral/agenttrail    # or, from a checkout: node bin/agenttrail.mjs
+```
+
+Your browser opens on `http://localhost:5330`. If 5330 is taken the daemon
+walks up until it finds a free port and prints where it landed. The daemon
+carries its own lifecycle commands, which is what the installer wraps:
 
 ```bash
 node bin/agenttrail.mjs up          # start in the background if not already running
-node bin/agenttrail.mjs autostart   # start at login, restart if it dies
+node bin/agenttrail.mjs autostart   # write the service file, print how to activate it
 ```
-
-`autostart` writes a launchd agent on macOS or a systemd user unit on Linux,
-and tells you the one command that activates it. `autostart --print` shows the
-unit without writing anything; `autostart --remove` takes it back out.
 
 Only one daemon runs per machine. Starting a second one finds the first,
 prints its URL, and exits.
@@ -152,6 +164,7 @@ There is no install step and no build step.
 
 ```bash
 npm test                        # node --test 'test/*.test.mjs'
+bash scripts/install.test.sh    # check the installer, installs nothing
 node bin/agenttrail.mjs         # run the daemon from the checkout
 ```
 
