@@ -1,0 +1,26 @@
+# PR gate: the full node:test suite plus the installer's dry-run checks, on
+# both OSes the daemon ships to. Zero npm dependencies, so there is no install
+# step to cache — checkout, node, test.
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test 'test/*.test.mjs'
+      - run: bash scripts/install.test.sh
