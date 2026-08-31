@@ -31,6 +31,16 @@ function fire (el, ev, target, arg) {
 }
 // closest() over a tiny selector→element map; anything else is a miss.
 const hit = map => ({ closest: sel => map[sel] || null })
+// Every tree row as {g,k,v}, in document order. The guide is the feature, so it
+// is read as data instead of grepped for — a wrong glyph fails on the value.
+const rows = html => html.split(/<(?:div|summary) class="row /).slice(1).map(r => ({
+  g: (r.match(/class="g">([^<]*)</) || [, ''])[1],
+  k: (r.match(/class="k">([^<]*)</) || [, ''])[1],
+  v: (r.match(/class="v">([^<]*)</) || [, ''])[1]
+}))
+// the same tree under either heading: `tree` on the phone panel, `subagents` in
+// the sheet. Stops at the next section so the log below never leaks in.
+const treeOf = html => rows(html.split(/<h2>(?:tree|subagents[^<]*)<\/h2>/)[1].split('<h2>')[0])
 const flush = () => new Promise(r => setTimeout(r, 0))
 
 function boot (opts = {}) {
@@ -298,11 +308,19 @@ test('a cyclic, self-parented or orphaned agent renders exactly once', async () 
   for (const d of ['AA', 'BB', 'CC', 'DD', 'EE', ...Array.from({ length: 12 }, (_, i) => `CH${i}`)]) {
     assert.equal(html.split(`>${d}<`).length - 1, 1, `${d} rendered once`)
   }
-  // depth ships as --ind so the indent step can shrink on a phone
-  assert.match(html, /--ind:9/, 'the chain indents to the cap')
-  assert.ok(!/--ind:(1\d|[2-9]\d)/.test(html), 'and never past it')
+  // depth ships as box-drawing glyphs, computed from real position: a segment
+  // per ancestor, `└─` only where the parent has nothing left below.
+  const r = treeOf(html)
+  const by = Object.fromEntries(r.map(x => [x.v || x.k, x.g]))
+  const depth = g => (g.length - 2) / 3
+  assert.equal(r[0].g, '', 'the session is the root, and a root hangs off nothing')
+  assert.equal(r[0].k, 'br-sfn')
+  assert.equal(depth(by.CH9), 9, 'the chain guides down to the cap')
+  assert.ok(r.every(x => !x.g || depth(x.g) <= 9), 'and never past it')
   assert.match(html, /subagents · 17/, 'the header counts every agent it drew')
-  assert.match(html, /--ind:1"><span class="d"><\/span><span class="k">agent<\/span><span class="v">EE/, 'a child of a drawn parent is indented')
+  assert.equal(by.EE, '│  └─', 'a child of a drawn parent hangs off a line still open above it')
+  assert.equal(by.CC, '├─', 'a top-level row with siblings after it keeps its line going')
+  assert.equal(by.CH11, '└─', 'and the very last one closes it')
 })
 
 test('a workflow group the reader closed stays closed when the panel repaints', async () => {
@@ -316,6 +334,10 @@ test('a workflow group the reader closed stays closed when the panel repaints', 
   ui.card('a1'); await flush()
   assert.match(ui.body.innerHTML, /<details class="wf" data-wf="wf_1" open>/, 'a running workflow opens itself')
   assert.match(ui.body.innerHTML, /1\/2 done · 1 running/, 'the header agrees with the rows under it')
+  // same guides as the phone panel: the workflow hangs off the root, its agents
+  // off the workflow, and the finished one sorts under the one still running
+  assert.deepEqual(treeOf(ui.body.innerHTML).map(x => [x.g, x.v]),
+    [['', ''], ['└─', 'wf_1'], ['   ├─', 'phase 1'], ['   └─', 'phase 0']])
 
   const before = ui.body.innerHTML
   fire(ui.body, 'toggle', { dataset: { wf: 'wf_1' }, open: false })
@@ -464,13 +486,171 @@ test('a themeless workflow falls back to its counters, and lone agents follow it
   assert.ok(html.indexOf('lone explorer') > html.indexOf('phase 3'), 'lone agents come after the workflows')
 })
 
-test('nothing running means no tree at all, just the log', async () => {
+test('nothing running leaves the root standing alone, and the log below it', async () => {
   const ui = boot({ phone: true, fetch: () => ok(D({ timeline: TL })) })
   ui.send({ sessions: [S('a1', { workflows: [{ id: 'wf_3', agents: 4, done: 4, running: 0 }], agents: [{ agentId: 'z', status: 'done' }] })] })
   ui.card('a1'); await flush()
   const html = ui.grid.children[0].innerHTML
-  assert.ok(!/running now/.test(html), 'a finished workflow belongs in the log, not the live tree')
+  assert.deepEqual(treeOf(html).map(x => x.k), ['a1'], 'a finished workflow belongs in the log, not the live tree')
   assert.match(html, /last 24h/)
+})
+
+// The panel is read as a shape, not a list: the session at the root, what it
+// spawned hanging off it, and a glyph column that says which lines are still
+// open below. Every guide is computed from position — the same row deeper in
+// the tree draws a different prefix.
+test('the inline tree roots on the session and guides each child off its position', async () => {
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [] })) })
+  ui.send({ sessions: [S('a1', {
+    status: 'busy',
+    canonical: { repo: 'agenttrail', branch: 'feat/session-tree' },
+    currentTool: { name: 'Read', detail: 'CLAUDE.md', at: 7 },
+    workflows: [WF],
+    agents: [{ agentId: 'solo', status: 'running', description: 'lone explorer', currentTool: { name: 'Grep', detail: 'lib/', at: 9 } }]
+  })] })
+  ui.card('a1'); await flush()
+  const html = ui.grid.children[0].innerHTML
+  assert.deepEqual(treeOf(html).map(x => [x.g, x.k || x.v]), [
+    ['', 'agenttrail · feat/session-tree'],
+    ['├─', 'wave1-session-pivot'],
+    ['│  ├─', 'review:D-ui'],
+    ['│  └─', '3 done'],
+    ['└─', 'lone explorer']
+  ])
+  assert.match(html, /class="k">agenttrail · feat\/session-tree<\/span><span class="v">Read CLAUDE\.md<\/span>/, 'a busy root says what it is doing')
+  assert.match(html, /class="t-ago" data-at="7"/, 'and keeps ticking')
+})
+
+// A phone card has room for what is moving. Finished agents are context for
+// that, so they arrive as a count instead of pushing the live rows off-screen.
+test('when the full tree lands, finished agents collapse to one row per parent', async () => {
+  const agents = [
+    { agentId: 'r1', workflowId: 'wf_1', description: 'still going', status: 'running', startedAt: 3 },
+    { agentId: 'd1', workflowId: 'wf_1', description: 'finished one', status: 'ended' },
+    { agentId: 'd2', workflowId: 'wf_1', description: 'finished two', status: 'ended' },
+    { agentId: 'l1', description: 'lone runner', status: 'running' },
+    { agentId: 'l2', description: 'lone finished', status: 'ended' }
+  ]
+  const wfs = [{ id: 'wf_1', name: 'wave1', running: 1, agents: 3, done: 2 }]
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [], agents, workflows: wfs })) })
+  ui.send({ sessions: [S('a1', { workflows: [{ ...wfs[0], runningAgents: [{ agentId: 'r1', description: 'still going' }] }] })] })
+  ui.card('a1')
+  assert.deepEqual(treeOf(ui.grid.children[0].innerHTML).map(x => x.k || x.v),
+    ['a1', 'wave1', 'still going', '2 done'], 'the SSE slice draws the tree while the fetch is in flight')
+
+  await flush()
+  const html = ui.grid.children[0].innerHTML
+  assert.deepEqual(treeOf(html).map(x => [x.g, x.k || x.v]), [
+    ['', 'a1'],
+    ['├─', 'wave1'],
+    ['│  ├─', 'still going'],
+    ['│  └─', '2 done'],
+    ['├─', 'lone runner'],
+    ['└─', '1 done']
+  ], 'and the full list only deepens it')
+  assert.ok(!/finished one|finished two|lone finished/.test(html), 'five agents, two counts, no wall of finished rows')
+})
+
+// Two sources describe the same session — the fetched tree and the SSE slice —
+// and reading one list off each produces a tree that never existed: a workflow
+// named by the live session, counted off the stale fetch, with the agent that is
+// actually running in neither. The choice is one decision for the whole snapshot.
+test('the tree reads one source: a fetch with rows wins whole, an empty one yields', async () => {
+  const live = { id: 'wf_1', name: 'wave1', agents: 6, done: 4, running: 1, runningAgents: [{ agentId: 'r1', description: 'still going' }] }
+  const ended = [{ agentId: 'd1', description: 'finished one', status: 'ended' }]
+
+  // the fetch landed carrying only ended agents and no workflows at all
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [], agents: ended })) })
+  ui.send({ sessions: [S('a1', { workflows: [live] })] })
+  ui.card('a1'); await flush()
+  const html = ui.grid.children[0].innerHTML
+  assert.deepEqual(treeOf(html).map(x => [x.g, x.k || x.v]), [
+    ['', 'a1'],
+    ['└─', '1 done']
+  ], 'the fetch describes this session whole: its one ended agent, and no workflow')
+  assert.ok(!/wave1|still going/.test(html), 'nothing from the live slice leaks in beside it')
+
+  // same live session, but the fetch has nothing to say — the slice draws it all
+  const ui2 = boot({ phone: true, fetch: () => ok(D({ timeline: [] })) })
+  ui2.send({ sessions: [S('a1', { workflows: [live] })] })
+  ui2.card('a1'); await flush()
+  assert.deepEqual(treeOf(ui2.grid.children[0].innerHTML).map(x => [x.g, x.k || x.v]), [
+    ['', 'a1'],
+    ['└─', 'wave1'],
+    ['   ├─', 'still going'],
+    ['   └─', '4 done']
+  ], 'and its counters come from the same place its rows do')
+})
+
+test('a session the daemon dropped falls back to the live tree, not its last fetch', async () => {
+  let n = 0
+  const ui = boot({
+    phone: true,
+    fetch: () => (++n === 1 ? ok(D({ timeline: [], agents: [{ agentId: 'd1', description: 'finished one', status: 'ended' }] })) : { ok: false, status: 404 })
+  })
+  ui.send({ sessions: [S('a1', { workflows: [{ id: 'wf_1', name: 'wave1', running: 1, runningAgents: [{ agentId: 'r1', description: 'still going' }] }] })] })
+  ui.card('a1'); await flush()
+  assert.deepEqual(treeOf(ui.grid.children[0].innerHTML).map(x => x.k || x.v), ['a1', '1 done'], 'the fetch is in charge while it is tracked')
+
+  ui.send({ partial: true, sessions: [{ id: 'a1', lastEventAt: 2 }] })   // moves, refetches, 404s
+  await flush()
+  assert.deepEqual(treeOf(ui.grid.children[0].innerHTML).map(x => x.k || x.v), ['a1', 'wave1', 'still going'],
+    'a snapshot the daemon no longer stands behind is not a tree to keep painting')
+})
+
+// Six is what a 320px card holds. The rows past it are still RUNNING, so
+// dropping them silently understates the session and adding them to "N done"
+// would state the opposite — they get their own line.
+test('running agents past the cap arrive as a count, not silence', async () => {
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [] })) })
+  ui.send({ sessions: [S('a1', { workflows: [{
+    id: 'wf_1', name: 'wave1', agents: 12, done: 3, running: 9,
+    runningAgents: Array.from({ length: 9 }, (_, i) => ({ agentId: 'r' + i, description: 'runner ' + i }))
+  }] })] })
+  ui.card('a1'); await flush()
+  const html = ui.grid.children[0].innerHTML
+  const t = treeOf(html)
+  assert.deepEqual(t.slice(-2).map(x => [x.g, x.k || x.v]), [['   ├─', '+3 more'], ['   └─', '3 done']],
+    'the overflow is its own row, above the done count and never folded into it')
+  assert.equal(t.length, 10, 'root, the workflow, six runners, the overflow, the done count')
+  assert.ok(!/runner 6|runner 7|runner 8/.test(html), 'the rows themselves stay cut')
+
+  // lone agents hit the same cap and say so the same way
+  const ui2 = boot({ phone: true, fetch: () => ok(D({ timeline: [] })) })
+  ui2.send({ sessions: [S('a1', { agents: Array.from({ length: 8 }, (_, i) => ({ agentId: 'l' + i, description: 'lone ' + i, status: 'running' })) })] })
+  ui2.card('a1'); await flush()
+  const t2 = treeOf(ui2.grid.children[0].innerHTML)
+  assert.equal(t2.length, 8, 'root, six runners, the overflow')
+  assert.deepEqual([t2[7].g, t2[7].v], ['└─', '+2 more'])
+})
+
+test('a workflow with no named phase falls back to its own counters', async () => {
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [] })) })
+  ui.send({ sessions: [S('a1', { workflows: [
+    { id: 'w1', name: 'named', phase: { current: 'Review', done: 3, total: 9 }, agents: 5, done: 2, running: 1 },
+    { id: 'w2', name: 'unnamed phase', phase: { current: null, done: 3, total: 9 }, agents: 5, done: 2, running: 1 },
+    { id: 'w3', name: 'no phase at all', agents: 4, done: 1, running: 1 }
+  ] })] })
+  ui.card('a1'); await flush()
+  const html = ui.grid.children[0].innerHTML
+  assert.match(html, /class="v">named<\/span><span class="r">Review 3\/9</)
+  assert.match(html, /class="v">unnamed phase<\/span><span class="r">2\/5 done</)
+  assert.match(html, /class="v">no phase at all<\/span><span class="r">1\/4 done</)
+})
+
+test('the root label, a workflow name and an aggregated tree are all escaped', async () => {
+  const bad = '<img src=q onerror=alert(1)>'
+  const agents = [
+    { agentId: 'r', workflowId: 'w', type: bad, description: bad, status: 'running', startedAt: 1 },
+    { agentId: 'd', workflowId: 'w', description: bad, status: 'ended' }
+  ]
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [], agents, workflows: [{ id: 'w', name: bad, description: bad, running: 1 }] })) })
+  ui.send({ sessions: [S('a1', { canonical: { repo: bad, branch: bad }, currentTool: { name: bad, detail: bad, at: 1 }, status: 'busy', workflows: [{ id: 'w', name: bad, running: 1 }] })] })
+  ui.card('a1'); await flush()
+  const html = ui.grid.children[0].innerHTML
+  assert.ok(!/<img /.test(html), 'nothing raw from the root, a workflow, an agent or its tool')
+  assert.match(html, /class="k">&lt;img src=q onerror=alert\(1\)&gt; · &lt;img/, 'not even the canonical root label')
+  assert.match(html, /class="v">1 done<\/span>/, 'and the aggregate is a number, not a name')
 })
 
 test('a log row is time, kind and whatever the daemon put in data', async () => {
@@ -530,7 +710,7 @@ test('the mini-log reads oldest to newest and caps at 40 rows', async () => {
   const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [...TL, ...many] })) })
   ui.send({ sessions: [S('a1')] })
   ui.card('a1'); await flush()
-  const html = ui.grid.children[0].innerHTML
+  const html = ui.grid.children[0].innerHTML.split('<h2>last 24h</h2>')[1]
   assert.equal(html.split('class="k">').length - 1, 40, 'the cap counts rows, and the oldest are the ones dropped')
   assert.ok(!html.includes('turn — e19'), 'row 20 of 63 is past the cap')
   assert.ok(html.indexOf('turn — e58') < html.indexOf('turn — e59'), 'newest stays at the bottom')
@@ -583,13 +763,14 @@ test('page keeps theme bootstrap, persisted toggle and drops the deleted familie
   for (const dead of ['fleet', 'inspector', 'expanded-node', 'expanded-plan', 'expanded-phase', 'plan-view', 'all-clear', 'switcher', 'canvas-hint', 'minimap', 'graph', 'PLAN.md', 'backfill', 'zoom', 'handoff', 'constellation']) {
     assert.ok(!HTML.includes(dead), `deleted: ${dead}`)
   }
-  // The 42KB wall bought live context: canonical identity in the head, the
-  // summary/prompt/title line under it, and the phone's inline panel — a live
-  // workflow tree and a 24h mini-log that spared the page a second layout.
-  // Checked first: no class selector in the file is unused, so the wall moved
-  // on new behaviour, not on slack. 48KB is the next one, and it moves again
-  // only after dead CSS comes out.
-  assert.ok(HTML.length < 48000, `file is ${HTML.length} bytes`)
+  // The 48KB wall bought the session tree: box-drawing guides computed from
+  // real position, the session itself as the root of both panels, and finished
+  // agents aggregated so a 320px card shows what is moving. It paid part of its
+  // own way — --ind/--ind-step went out, the glyph column being the indent now.
+  // Checked first, again: no class selector in the file is unused, so the wall
+  // moved on new behaviour, not on slack. 52KB is the next one, and the only
+  // thing left to sell for it is a real feature, not dead CSS.
+  assert.ok(HTML.length < 52000, `file is ${HTML.length} bytes`)
 })
 
 // A thumb needs ~44px, and every control the phone layout keeps reachable has to
