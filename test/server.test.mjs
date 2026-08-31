@@ -44,14 +44,28 @@ function stubAdapter(over = {}) {
     sessions: () => state.sessions,
     digestEvents: since => state.events.filter(e => e.at >= since),
     exportPath: id => path.join(tmp, `${id}.jsonl`),
+    material: id => ({ version: `${id}:1`, text: `material for ${id}` }),
     distill: async function* (id) { yield `# ${id}\n`; yield '\n## turn 1\n'; yield 'hello\n' },
     stop: () => {},
     ...over,
   }
 }
 
-async function withServer(adapter, fn) {
-  const server = createServer({ adapter, host: 'testbox', version: '9.9.9' })
+// The summarizer seam: `summaries` is read live, so a test can make one land
+// mid-run the way a real background refresh does. `asked` records what the
+// daemon considered worth an LLM call.
+function stubSummarizer(over = {}) {
+  const asked = []
+  return {
+    asked,
+    get: (id, material) => { asked.push({ id, material }); return (over.summaries || {})[id] ?? null },
+    history: (id, since) => ((over.log || {})[id] || []).filter(e => e.at >= since),
+    stop: () => {},
+  }
+}
+
+async function withServer(adapter, fn, summarizer) {
+  const server = createServer({ adapter, summarizer, host: 'testbox', version: '9.9.9' })
   await new Promise(r => server.listen(0, '127.0.0.1', r))
   const base = `http://127.0.0.1:${server.address().port}`
   try { return await fn({ server, base }) }
@@ -263,6 +277,130 @@ test('/session/<id> returns one session with agents, 404 otherwise', async () =>
     assert.equal(body.id, 'sess-a')
     assert.equal(body.agents[0].type, 'Explore')
     assert.equal((await get(base, '/session/nope')).status, 404)
+  })
+})
+
+// A summary is a model call, so the daemon only pays for sessions someone could
+// be looking at. The ones it skips must never even be ASKED — a cooldown inside
+// the summarizer would hide a daemon that is calling it for every dead session.
+test('a summary rides only the sessions worth one: busy, or idle and still warm', async () => {
+  const now = Date.now()
+  const ids = ['busy-1', 'warm-idle', 'cold-idle', 'gone', 'oc-1']
+  const adapter = stubAdapter()
+  adapter.state.sessions = [
+    session({ id: 'busy-1', status: 'busy' }),
+    session({ id: 'warm-idle', status: 'idle', lastEventAt: now - 60e3 }),
+    session({ id: 'cold-idle', status: 'idle', lastEventAt: now - 90 * 60e3 }),
+    session({ id: 'gone', status: 'ended' }),
+    session({ id: 'oc-1', source: 'opencode', status: 'busy' }),
+  ]
+  const sum = stubSummarizer({ summaries: Object.fromEntries(ids.map(id => [id, { text: `doing ${id}`, at: now }])) })
+  await withServer(adapter, async ({ base }) => {
+    const by = Object.fromEntries((await getJson(base, '/model')).body.sessions.map(s => [s.id, s]))
+    assert.equal(by['busy-1'].summary.text, 'doing busy-1')
+    assert.equal(by['warm-idle'].summary.text, 'doing warm-idle')
+    assert.equal('summary' in by['cold-idle'], false, 'idle and cold for an hour is not worth a model call')
+    assert.equal('summary' in by['gone'], false, 'an ended session is not doing anything right now')
+    assert.equal('summary' in by['oc-1'], false, 'only the claude adapter has material to summarize')
+    assert.deepEqual(sum.asked.map(a => a.id).sort(), ['busy-1', 'warm-idle'], 'and the skipped ones were never even asked')
+    assert.equal(sum.asked[0].material.version, `${sum.asked[0].id}:1`, 'the adapter material is what gets handed over')
+  }, sum)
+})
+
+test('a summary that lands between ticks is a session that moved', async () => {
+  const summaries = {}
+  const sum = stubSummarizer({ summaries })
+  const adapter = stubAdapter()
+  await withServer(adapter, async ({ base, server }) => {
+    const sub = subscribe(base)
+    try {
+      await waitFor(() => sub.frames.length >= 1)
+      assert.equal('summary' in sub.frames[0].sessions[0], false, 'nothing cached yet is an absent field, not a null')
+      summaries['sess-a'] = { text: 'wiring the SPI rail', at: Date.now() }  // a background refresh landed
+      server.notify()
+      await waitFor(() => sub.frames.length >= 2)
+      assert.equal(sub.frames[1].sessions[0].id, 'sess-a')
+      assert.equal(sub.frames[1].sessions[0].summary.text, 'wiring the SPI rail')
+    } finally { sub.close() }
+  }, sum)
+})
+
+const TL_NOW = Date.now()
+const tlEvent = (minutesAgo, kind, data, sessionId = 'sess-a') =>
+  ({ at: TL_NOW - minutesAgo * 60e3, sessionId, name: 'br-sfn-32', kind, data })
+const TL_EVENTS = [
+  tlEvent(26 * 60, 'turn', { durationMs: 1 }),          // outside the 24h window
+  tlEvent(180, 'turn', { durationMs: 1200 }),
+  tlEvent(120, 'cost', { totalUSD: 1.5 }),
+  tlEvent(60, 'pr', { number: 12, url: 'https://github.com/o/r/pull/12' }),
+  tlEvent(45, 'session-start', {}),                     // not one of the contract's kinds
+  tlEvent(30, 'title', { title: 'map pacs.008' }),
+  tlEvent(10, 'turn', { durationMs: 900 }, 'sess-b'),   // a different session
+]
+
+test('/session/<id> merges journal events and past summaries into one 24h timeline', async () => {
+  const adapter = stubAdapter({ digestEvents: since => TL_EVENTS.filter(e => e.at >= since) })
+  const sum = stubSummarizer({ log: { 'sess-a': [
+    { at: TL_NOW - 25 * 3600e3, text: 'yesterday, out of the window' },
+    { at: TL_NOW - 150 * 60e3, text: 'refactoring the mapper' },
+    { at: TL_NOW - 20 * 60e3, text: 'running the suite' },
+  ] } })
+  await withServer(adapter, async ({ base }) => {
+    const tl = (await getJson(base, '/session/sess-a')).body.timeline
+    assert.deepEqual(tl.map(x => x.kind), ['turn', 'summary', 'cost', 'pr', 'title', 'summary'],
+      'both sources interleaved, oldest-first')
+    assert.deepEqual(Object.keys(tl[0]).sort(), ['at', 'data', 'kind'], 'the frozen row shape')
+    assert.equal(tl.at(-1).data.text, 'running the suite', 'the newest thing sits at the end')
+    assert.equal(tl.some(x => x.data && x.data.text === 'yesterday, out of the window'), false)
+    assert.equal(tl.some(x => x.kind === 'session-start'), false, 'the contract names what a log row can be')
+    assert.equal(tl.some(x => x.data && x.data.durationMs === 900), false, 'another session events stay out')
+  }, sum)
+})
+
+// An open detail panel refetches on every tick that touches its session. Going
+// through the list view to find one session would build a model material window
+// for every warm session on the machine, once a second, to answer about one.
+test('/session/<id> summarizes the session it was asked for, not the whole fleet', async () => {
+  const now = Date.now()
+  const adapter = stubAdapter()
+  adapter.state.sessions = ['sess-a', 'sess-b', 'sess-c'].map(id => session({ id, status: 'busy', lastEventAt: now }))
+  const sum = stubSummarizer({ summaries: { 'sess-b': { text: 'just this one', at: now } } })
+  await withServer(adapter, async ({ base }) => {
+    const body = (await getJson(base, '/session/sess-b')).body
+    assert.equal(body.summary.text, 'just this one', 'the card asked for still gets its line')
+    assert.deepEqual(sum.asked.map(a => a.id), ['sess-b'], 'and the other two were never priced')
+    assert.equal((await getJson(base, '/session/nope')).status, 404, 'an unknown id is still a 404')
+  }, sum)
+})
+
+// A summary is cached under the material version it was built at, so one written
+// from a half-replayed transcript is both wrong and stuck for the whole cadence.
+test('a session still replaying its transcript is not summarized until it catches up', async () => {
+  const now = Date.now()
+  let replaying = true
+  const adapter = stubAdapter({ caughtUp: id => !(replaying && id === 'sess-a') })
+  adapter.state.sessions = ['sess-a', 'sess-b'].map(id => session({ id, status: 'busy', lastEventAt: now }))
+  const sum = stubSummarizer({ summaries: Object.fromEntries(['sess-a', 'sess-b'].map(id => [id, { text: `doing ${id}`, at: now }])) })
+  await withServer(adapter, async ({ base }) => {
+    const by = Object.fromEntries((await getJson(base, '/model')).body.sessions.map(s => [s.id, s]))
+    assert.equal('summary' in by['sess-a'], false, 'a half-read transcript is not worth summarizing')
+    assert.equal(by['sess-b'].summary.text, 'doing sess-b', 'and it holds back only itself')
+    assert.deepEqual(sum.asked.map(a => a.id), ['sess-b'], 'the skipped one was never even asked')
+
+    replaying = false                                   // the replay finished between ticks
+    const after = Object.fromEntries((await getJson(base, '/model')).body.sessions.map(s => [s.id, s]))
+    assert.equal(after['sess-a'].summary.text, 'doing sess-a', 'and it is picked up on the next pass')
+  }, sum)
+})
+
+test('with no summarizer the timeline is the journal alone and no session carries a summary', async () => {
+  const adapter = stubAdapter({ digestEvents: since => TL_EVENTS.filter(e => e.at >= since) })
+  await withServer(adapter, async ({ base }) => {
+    for (const s of (await getJson(base, '/model')).body.sessions) assert.equal('summary' in s, false)
+    const body = (await getJson(base, '/session/sess-a')).body
+    assert.equal('summary' in body, false)
+    assert.deepEqual(body.timeline.map(x => x.kind), ['turn', 'cost', 'pr', 'title'])
+    assert.equal(body.agents.length, 1, 'and the session itself is served exactly as before')
   })
 })
 

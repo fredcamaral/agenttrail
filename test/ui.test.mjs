@@ -51,8 +51,11 @@ function boot (opts = {}) {
     EventSource: function () { Object.assign(sse, this); return sse },
     setInterval: () => 0,
     fetch: url => { calls.push(url); return (opts.fetch || (() => ({ ok: false })))(url) },
+    // the page asks one question — is this screen at least 760px — and answers
+    // "phone" if the environment cannot say. boot({phone:true}) is that screen.
+    matchMedia: () => ({ matches: !opts.phone }),
     encodeURIComponent,
-    Number, Math, JSON, String, Object, Map, Set, Array, Date, isFinite, Promise
+    Number, Math, JSON, String, Object, Map, Set, Array, Date, isFinite, isNaN, Promise
   }
   const fn = new Function(...Object.keys(ctx), SRC + '\n;return {send:d=>es.onmessage({data:JSON.stringify(d)}),grid:document.getElementById("sessions"),counts:document.getElementById("counts"),host:document.getElementById("host"),sheet:document.getElementById("sheet"),body:document.getElementById("sheet-body"),title:document.getElementById("sheet-title"),sub:document.getElementById("sheet-sub"),openDetail,openDigest,closeSheet}')
   const ui = fn(...Object.values(ctx))
@@ -183,6 +186,80 @@ test('prototype keys from the daemon never resolve to inherited values', () => {
     assert.match(el.innerHTML, /class="src" style="color:hsl\(/, 'falls back to the hashed colour')
   }
   assert.match(ui.counts.innerHTML, /2 ended/, 'both sessions are counted')
+})
+
+// ---- hero identity and the one line under it ------------------------------
+// A session's birth name is a guess made in its first second. canonical is what
+// it still is on day three, so it outranks the name whenever the adapter has it.
+
+test('canonical repo and branch outrank the birth name', () => {
+  const ui = boot()
+  ui.send({ sessions: [S('a', { name: 'lively-otter', canonical: { repo: 'agenttrail', branch: 'feat/live-context' } })] })
+  const html = ui.grid.children[0].innerHTML
+  assert.match(html, /<span class="name" title="agenttrail · feat\/live-context">agenttrail <span class="sep">·<\/span> <span class="br">feat\/live-context<\/span>/)
+  assert.ok(!html.includes('lively-otter'), 'the birth name is gone, not appended')
+})
+
+test('a detached HEAD or missing branch leaves the repo standing alone', () => {
+  const ui = boot()
+  ui.send({ sessions: [
+    S('h', { canonical: { repo: 'midaz', branch: 'HEAD' } }),
+    S('n', { canonical: { repo: 'matcher', branch: null }, lastEventAt: 0 })
+  ] })
+  for (const el of ui.grid.children) {
+    assert.ok(!/HEAD|class="br"/.test(el.innerHTML), 'no branch chip when there is no real branch')
+  }
+  assert.match(ui.grid.children[0].innerHTML, /title="midaz">midaz<\/span>/)
+})
+
+test('no canonical falls back to the name, and the meta line keeps cwd and branch', () => {
+  const ui = boot()
+  ui.send({ sessions: [S('a', { name: 'lively-otter', cwd: '/srv/worktrees/live-context', gitBranch: 'feat/x' })] })
+  const html = ui.grid.children[0].innerHTML
+  assert.match(html, /class="name" title="lively-otter">lively-otter</)
+  assert.match(html, /live-context <span class="sep">·<\/span> <span class="br">feat\/x<\/span>/)
+})
+
+test('the meta line stops repeating what the head already said', () => {
+  const ui = boot()
+  ui.send({ sessions: [S('a', { canonical: { repo: 'agenttrail', branch: 'feat/x' }, cwd: '/srv/worktrees/agenttrail', gitBranch: 'feat/x', model: 'opus', account: '005' })] })
+  const meta = ui.grid.children[0].innerHTML.split('class="meta"')[1]
+  assert.ok(!/feat\/x/.test(meta), 'the branch is stated once, in the head')
+  assert.match(meta, /opus <span class="sep">·<\/span> 005/, 'and the width goes to what is left')
+})
+
+test('the line under the name is summary, then last prompt, then title', () => {
+  const ui = boot()
+  const full = { title: 'born title', lastPrompt: { text: 'ship the tree', at: 20 }, summary: { text: 'reviewing the mini-log', at: 30 } }
+  ui.send({ sessions: [S('a', full)] })
+  assert.match(ui.grid.children[0].innerHTML, /class="v">reviewing the mini-log<\/span><span class="a t-ago" data-at="30"/, 'summary wins, and shows its age')
+
+  ui.send({ sessions: [S('a', { ...full, summary: null })] })
+  assert.match(ui.grid.children[0].innerHTML, /class="v">ship the tree<\/span>/)
+  assert.ok(!/class="a t-ago"/.test(ui.grid.children[0].innerHTML), 'only a summary is dated; a prompt is not')
+
+  ui.send({ sessions: [S('a', { ...full, summary: null, lastPrompt: null })] })
+  assert.match(ui.grid.children[0].innerHTML, /class="v">born title<\/span>/)
+})
+
+// The whole epic renders fields the wiring epic has not shipped yet. Absent is
+// the normal case in production too, whenever the summarizer is switched off.
+test('a session with none of the new fields still renders', () => {
+  const ui = boot()
+  ui.send({ sessions: [S('bare')] })
+  const html = ui.grid.children[0].innerHTML
+  assert.match(html, /class="name" title="bare">bare</)
+  assert.match(html, /class="title none"[^>]*><span class="v">no title yet<\/span>/)
+  assert.ok(!/class="exp"/.test(html), 'and nothing unfolds until it is tapped')
+})
+
+test('a hostile summary, prompt and canonical name are escaped', () => {
+  const bad = '<img src=q onerror=alert(1)>'
+  const ui = boot()
+  ui.send({ sessions: [S('a', { canonical: { repo: bad, branch: bad }, summary: { text: bad, at: 3 }, lastPrompt: { text: bad, at: 2 } })] })
+  const html = ui.grid.children[0].innerHTML
+  assert.ok(!/<img /.test(html), 'nothing raw from the LLM or the human')
+  assert.match(html, /title="&lt;img src=q onerror=alert\(1\)&gt; · &lt;img/, 'not even inside the tooltip')
 })
 
 // ---- detail panel ---------------------------------------------------------
@@ -322,6 +399,183 @@ test('agent, workflow, todo and digest fields are escaped', async () => {
   assert.match(ui.body.innerHTML, /href="#"/, 'a javascript: PR url is neutralised')
 })
 
+// ---- the phone card: inline tree and mini-log ------------------------------
+// Under 760px a modal covers the card the thumb just hit, so the card unfolds
+// in place. The tree comes from the SSE session and keeps ticking with the
+// grid; only the log needs the fetch the sheet was already making.
+
+const WF = {
+  id: 'wf_b77c8066-311',
+  name: 'wave1-session-pivot',
+  description: 'pivot the session model onto canonical identity',
+  agents: 9,
+  done: 3,
+  running: 1,
+  phase: { current: 'Review', done: 3, total: 9 },
+  runningAgents: [{ agentId: 'ag1', description: 'review:D-ui', currentTool: { name: 'Edit', detail: 'public/index.html', at: 555 } }]
+}
+const TL = [
+  { at: 1756600000000, kind: 'turn', data: { text: 'first' } },
+  { at: 1756600060000, kind: 'pr', data: { number: 7, repo: 'agenttrail' } },
+  { at: 1756600120000, kind: 'summary', data: 'newest' }
+]
+const clock = ms => new Date(ms).toTimeString().slice(0, 5)
+
+test('on a phone the card unfolds in place instead of opening the sheet', async () => {
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: TL })) })
+  ui.send({ sessions: [S('a1', { workflows: [WF] })] })
+  ui.card('a1'); await flush()
+  assert.ok(!ui.sheet.open, 'no modal on top of the card the thumb just hit')
+  const html = ui.grid.children[0].innerHTML
+  assert.match(html, /class="exp"/)
+  assert.match(html, /aria-expanded="true"/)
+  assert.deepEqual(ui.calls, ['/session/a1'], 'one fetch, for the log the SSE session does not carry')
+})
+
+test('on a wide screen the card does not unfold; the sheet still does the work', async () => {
+  const ui = boot({ fetch: () => ok(D({ timeline: TL })) })
+  ui.send({ sessions: [S('a1', { workflows: [WF] })] })
+  ui.card('a1'); await flush()
+  assert.equal(ui.sheet.open, true)
+  assert.ok(!/class="exp"/.test(ui.grid.children[0].innerHTML), 'the grid stays a grid of summaries')
+})
+
+test('the tree names the workflow, its phase and what each agent is running', async () => {
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [] })) })
+  ui.send({ sessions: [S('a1', { workflows: [WF] })] })
+  ui.card('a1'); await flush()
+  const html = ui.grid.children[0].innerHTML
+  assert.match(html, /class="v">wave1-session-pivot<\/span><span class="r">Review 3\/9<\/span>/)
+  assert.match(html, /class="hint c2">pivot the session model/, 'the blurb is clamped, not dropped')
+  assert.match(html, /class="k">review:D-ui<\/span><span class="v">Edit public\/index\.html<\/span>/)
+  assert.match(html, /class="t-ago" data-at="555"/, 'the tool line keeps ticking')
+})
+
+test('a themeless workflow falls back to its counters, and lone agents follow it', async () => {
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [] })) })
+  ui.send({ sessions: [S('a1', {
+    workflows: [{ id: 'wf_2', agents: 5, done: 2, running: 1, runningAgents: [{ agentId: 'x', description: 'phase 3' }] }],
+    agents: [{ agentId: 'solo', status: 'running', description: 'lone explorer', currentTool: { name: 'Grep', detail: 'lib/', at: 9 } }]
+  })] })
+  ui.card('a1'); await flush()
+  const html = ui.grid.children[0].innerHTML
+  assert.match(html, /class="v">wf_2<\/span><span class="r">2\/5 done<\/span>/, 'the id stands in for a missing theme')
+  assert.match(html, /class="k">phase 3<\/span><span class="v">—<\/span>/, 'an agent between tools says so')
+  assert.ok(html.indexOf('lone explorer') > html.indexOf('phase 3'), 'lone agents come after the workflows')
+})
+
+test('nothing running means no tree at all, just the log', async () => {
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: TL })) })
+  ui.send({ sessions: [S('a1', { workflows: [{ id: 'wf_3', agents: 4, done: 4, running: 0 }], agents: [{ agentId: 'z', status: 'done' }] })] })
+  ui.card('a1'); await flush()
+  const html = ui.grid.children[0].innerHTML
+  assert.ok(!/running now/.test(html), 'a finished workflow belongs in the log, not the live tree')
+  assert.match(html, /last 24h/)
+})
+
+test('a log row is time, kind and whatever the daemon put in data', async () => {
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: TL })) })
+  ui.send({ sessions: [S('a1')] })
+  ui.card('a1'); await flush()
+  const html = ui.grid.children[0].innerHTML
+  assert.match(html, new RegExp(`class="k">${clock(1756600000000)}</span><span class="v">turn — first`))
+  assert.match(html, /pr — #7/, 'an object with no text still reads as what it is')
+  assert.match(html, /summary — newest/, 'and a bare string is used as-is')
+})
+
+// A row saying `turn — {"durationMs":45000,"messageCount":3}` is a row nobody
+// reads. The kinds the contract names get read as what they mean; everything
+// else keeps the raw JSON, which is still better than dropping the row.
+test('the log formats the kinds it knows: a turn is how long it took, a cost is money', async () => {
+  const tl = [
+    { at: 1756600000000, kind: 'turn', data: { durationMs: 45000, messageCount: 3 } },
+    { at: 1756600060000, kind: 'cost', data: { totalUSD: 1.5 } },
+    { at: 1756600120000, kind: 'turn', data: { messageCount: 2 } },
+    { at: 1756600180000, kind: 'blimp', data: { durationMs: 45000 } }
+  ]
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: tl })) })
+  ui.send({ sessions: [S('a1')] })
+  ui.card('a1'); await flush()
+  const html = ui.grid.children[0].innerHTML
+  assert.match(html, /turn — 45s/, 'a duration, not the object it came in')
+  assert.match(html, /cost — \$1\.50/, 'money reads as money')
+  assert.match(html, /turn — \{&quot;messageCount&quot;:2\}/, 'a turn with no duration still shows what there is')
+  assert.match(html, /blimp — \{&quot;durationMs&quot;:45000\}/, 'and an unknown kind is never guessed at')
+})
+
+// dialog.close() dispatches on a QUEUED task, so in a browser the close for the
+// sheet openDetail() just dismissed arrives AFTER the inline panel is installed.
+// The stub fires close synchronously, so the second fire below IS that ordering.
+test('a queued sheet close does not fold the card it just opened', async () => {
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [] })) })
+  ui.send({ sessions: [S('a1')] })
+  ui.openDetail('a1', true)              // drilled in from a digest row: the sheet
+  await flush()
+  assert.equal(ui.sheet.open, true)
+
+  ui.card('a1'); await flush()           // then tapped on the phone: sheet out, card open
+  assert.match(ui.grid.children[0].innerHTML, /class="exp"/)
+
+  fire(ui.sheet, 'close', ui.sheet)      // the browser's late close event lands here
+  ui.send({ partial: true, sessions: [S('a1', { lastEventAt: 2 })] })
+  assert.match(ui.grid.children[0].innerHTML, /class="exp"/, 'the panel the thumb opened is still open')
+
+  ui.closeSheet()                        // an explicit close still closes everything
+  ui.send({ partial: true, sessions: [S('a1', { lastEventAt: 3 })] })
+  assert.ok(!/class="exp"/.test(ui.grid.children[0].innerHTML))
+})
+
+test('the mini-log reads oldest to newest and caps at 40 rows', async () => {
+  const many = Array.from({ length: 60 }, (_, i) => ({ at: 1756600000000 + i * 1000, kind: 'turn', data: 'e' + i }))
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [...TL, ...many] })) })
+  ui.send({ sessions: [S('a1')] })
+  ui.card('a1'); await flush()
+  const html = ui.grid.children[0].innerHTML
+  assert.equal(html.split('class="k">').length - 1, 40, 'the cap counts rows, and the oldest are the ones dropped')
+  assert.ok(!html.includes('turn — e19'), 'row 20 of 63 is past the cap')
+  assert.ok(html.indexOf('turn — e58') < html.indexOf('turn — e59'), 'newest stays at the bottom')
+})
+
+test('an empty window says so, and so does a daemon with no timeline yet', async () => {
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [] })) })
+  ui.send({ sessions: [S('a1')] })
+  ui.card('a1'); await flush()
+  assert.match(ui.grid.children[0].innerHTML, /nothing in the last 24h/)
+
+  const ui2 = boot({ phone: true, fetch: () => ok(D({})) })
+  ui2.send({ sessions: [S('a1')] })
+  ui2.card('a1'); await flush()
+  assert.match(ui2.grid.children[0].innerHTML, /nothing in the last 24h/, 'an absent timeline is an empty one, not a crash')
+})
+
+test('a second tap folds the card, and only one card is ever open', async () => {
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [] })) })
+  ui.send({ sessions: [S('a1', { lastPrompt: { text: 'the whole prompt, uncut', at: 4 } }), S('a2')] })
+  ui.card('a1'); await flush()
+  assert.match(ui.grid.children[0].innerHTML, /last prompt<\/h2><div class="hint">the whole prompt, uncut/, 'the head clips it, the expansion does not')
+  ui.card('a2'); await flush()
+  assert.ok(!/class="exp"/.test(ui.grid.children[0].innerHTML), 'the first card folded when the second opened')
+  assert.match(ui.grid.children[1].innerHTML, /class="exp"/)
+  ui.card('a2')
+  assert.ok(!/class="exp"/.test(ui.grid.children[1].innerHTML), 'and a second tap closes it')
+  assert.match(ui.grid.children[1].innerHTML, /aria-expanded="false"/)
+})
+
+test('workflow themes, tool lines and log rows are escaped', async () => {
+  const bad = '<img src=q onerror=alert(1)>'
+  const ui = boot({ phone: true, fetch: () => ok(D({ timeline: [{ at: 1756600000000, kind: bad, data: { text: bad } }] })) })
+  ui.send({ sessions: [S('a1', {
+    lastPrompt: { text: bad, at: 1 },
+    workflows: [{ id: bad, name: bad, description: bad, running: 1, runningAgents: [{ agentId: bad, description: bad, currentTool: { name: bad, detail: bad, at: 2 } }] }]
+  })] })
+  ui.card('a1'); await flush()
+  const html = ui.grid.children[0].innerHTML
+  assert.ok(!/<img /.test(html), 'nothing raw from a workflow script, a tool line or the log')
+  for (const spot of [/class="hint">&lt;img/, /class="hint c2">&lt;img/, /class="k">&lt;img/, /class="v">&lt;img/]) {
+    assert.match(html, spot)
+  }
+})
+
 test('page keeps theme bootstrap, persisted toggle and drops the deleted families', () => {
   assert.match(HTML, /localStorage\.getItem\('at-theme'\)/, 'pre-paint theme bootstrap')
   assert.match(HTML, /localStorage\.setItem\('at-theme',next\)/, 'persisted toggle')
@@ -329,11 +583,13 @@ test('page keeps theme bootstrap, persisted toggle and drops the deleted familie
   for (const dead of ['fleet', 'inspector', 'expanded-node', 'expanded-plan', 'expanded-phase', 'plan-view', 'all-clear', 'switcher', 'canvas-hint', 'minimap', 'graph', 'PLAN.md', 'backfill', 'zoom', 'handoff', 'constellation']) {
     assert.ok(!HTML.includes(dead), `deleted: ${dead}`)
   }
-  // wave 3 spent the last 40KB wall on the design system itself: a type scale,
-  // a depth scale, both-theme colour parity, sheet motion, three designed empty
-  // states and the touch/wide breakpoints. Still deliberate, not a high-water
-  // mark — 42KB is the next wall, and dead CSS comes out before it moves again.
-  assert.ok(HTML.length < 42000, `file is ${HTML.length} bytes`)
+  // The 42KB wall bought live context: canonical identity in the head, the
+  // summary/prompt/title line under it, and the phone's inline panel — a live
+  // workflow tree and a 24h mini-log that spared the page a second layout.
+  // Checked first: no class selector in the file is unused, so the wall moved
+  // on new behaviour, not on slack. 48KB is the next one, and it moves again
+  // only after dead CSS comes out.
+  assert.ok(HTML.length < 48000, `file is ${HTML.length} bytes`)
 })
 
 // A thumb needs ~44px, and every control the phone layout keeps reachable has to

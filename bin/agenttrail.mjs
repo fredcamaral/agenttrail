@@ -18,6 +18,9 @@ const TICK_MS = 1000 // SSE ticks are coalesced to at most one per second
 const KEEPALIVE_MS = 25000
 const HEAVY = ['agents', 'todos', 'recentTools']
 const AGENT_CAP = 12 // list views carry a slice of the tree; /session/<id> serves all of it
+const SUMMARY_IDLE = 30 * 60e3   // an idle session colder than this is not worth an LLM call
+const TIMELINE_MS = 24 * 3600e3  // the mini-log window /session/<id> serves
+const TIMELINE_KINDS = new Set(['turn', 'pr', 'cost', 'title'])
 
 // A long-running session accumulates thousands of subagents — one real session
 // on mordor had 2603, a megabyte of JSON on its own. Cards need the newest
@@ -51,6 +54,13 @@ export function composeAdapters(adapters) {
   return {
     sessions: () => live.flatMap(a => a.sessions()).sort((x, y) => y.lastEventAt - x.lastEventAt),
     digestEvents: since => live.flatMap(a => a.digestEvents(since)).sort((x, y) => x.at - y.at),
+    // Asked once per warm session per tick, so it skips the owners() scan: an
+    // adapter that does not know the id answers null anyway, and one that has
+    // no summary material at all does not define the method.
+    material: id => { for (const a of live) { const v = a.material?.(id); if (v) return v } return null },
+    // Same reasoning, and the same default: an adapter that does not know the
+    // id — or has no replay to speak of — is not holding anything back.
+    caughtUp: id => { for (const a of live) if (a.caughtUp?.(id) === false) return false; return true },
     exportPath: id => firstOf(id, a => a.exportPath(id)),
     distill: id => firstOf(id, a => a.distill(id)),
     stop: () => { for (const a of live) { try { a.stop() } catch {} } },
@@ -92,15 +102,36 @@ export function parseArgs(argv) {
 // ---------- HTTP + SSE ----------
 // adapter is injected so tests can drive the server with a stub. The daemon
 // passes the real Claude Code adapter; wave 2 merges opencode sessions in.
-export function createServer({ adapter, host = os.hostname(), version = VERSION } = {}) {
+export function createServer({ adapter, summarizer = null, host = os.hostname(), version = VERSION } = {}) {
   if (!adapter) throw new Error('createServer needs an adapter')
   const clients = new Set()
   const seen = new Map() // session id -> {sig, lastEventAt, heavySig} — what subscribers already hold
   let tickTimer = null
   let lastTick = 0
 
+  // A summary costs a model call, so only the sessions someone could be
+  // watching get one: busy, or idle and still warm. get() never blocks — it
+  // answers from cache and refreshes in the background, and the summarizer's
+  // onUpdate IS the daemon's onChange, so a refreshed line rides the next tick.
+  // Every read of the world goes through here, so the summary is part of what a
+  // tick signs: a summary that changed is a session that moved.
+  //
+  // A session still replaying its transcript at boot is skipped as well: its
+  // material describes a window that stops halfway down the file, and the
+  // summary written from it would be wrong, paid for, and then cached under a
+  // version that stops it being rewritten for five minutes.
+  const warm = (s) => s.source === 'claude'
+    && (s.status === 'busy' || (s.status === 'idle' && s.lastEventAt > Date.now() - SUMMARY_IDLE))
+    && adapter.caughtUp?.(s.id) !== false
+  const withSummary = (s) => {
+    if (!summarizer || !warm(s)) return s
+    const summary = summarizer.get(s.id, adapter.material?.(s.id) ?? null)
+    return summary ? { ...s, summary } : s   // no summary yet is an absent field, not a null
+  }
+  const sessions = () => (summarizer ? adapter.sessions().map(withSummary) : adapter.sessions())
+
   const boundPort = () => { const a = server.address(); return a && typeof a === 'object' ? a.port : null }
-  const fullModel = () => ({ host, port: boundPort(), now: Date.now(), sessions: adapter.sessions().map(listView) })
+  const fullModel = () => ({ host, port: boundPort(), now: Date.now(), sessions: sessions().map(listView) })
 
   function sig(s) { return JSON.stringify(s) }
   function heavySig(s) { return JSON.stringify(HEAVY.map(k => s[k])) }
@@ -138,11 +169,11 @@ export function createServer({ adapter, host = os.hostname(), version = VERSION 
     tickTimer = null
     lastTick = Date.now()
     if (!clients.size) return
-    const sessions = adapter.sessions()
-    const ids = new Set(sessions.map(s => s.id))
+    const live = sessions()
+    const ids = new Set(live.map(s => s.id))
     // a session disappearing cannot be expressed as a merge — resend the world
-    for (const id of seen.keys()) if (!ids.has(id)) { reseed(sessions); sendAll(fullModel()); return }
-    const changed = changedSessions(sessions)
+    for (const id of seen.keys()) if (!ids.has(id)) { reseed(live); sendAll(fullModel()); return }
+    const changed = changedSessions(live)
     if (changed.length) sendAll({ partial: true, now: Date.now(), sessions: changed })
   }
 
@@ -176,9 +207,9 @@ export function createServer({ adapter, host = os.hostname(), version = VERSION 
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive', 'x-accel-buffering': 'no' })
     clients.add(res)
     req.on('close', () => clients.delete(res))
-    const sessions = adapter.sessions()
-    reseed(sessions)
-    sendAll({ host, port: boundPort(), now: Date.now(), sessions: sessions.map(listView) })
+    const live = sessions()
+    reseed(live)
+    sendAll({ host, port: boundPort(), now: Date.now(), sessions: live.map(listView) })
   }
 
   function digestResponse(u) {
@@ -187,10 +218,26 @@ export function createServer({ adapter, host = os.hostname(), version = VERSION 
     return { since, entries: digest(adapter.digestEvents(since), since) }
   }
 
+  // The mini-log: what the journal recorded for this session, merged with the
+  // summaries it has had, in one shape. Only the kinds the contract names — a
+  // session-start is liveness, which the card already says out loud.
+  function timeline(id) {
+    const since = Date.now() - TIMELINE_MS
+    const out = []
+    for (const e of adapter.digestEvents(since) || []) {
+      if (e && e.sessionId === id && e.at >= since && TIMELINE_KINDS.has(e.kind)) out.push({ at: e.at, kind: e.kind, data: e.data ?? {} })
+    }
+    if (summarizer) for (const h of summarizer.history(id, since) || []) out.push({ at: h.at, kind: 'summary', data: { text: h.text } })
+    return out.sort((a, b) => a.at - b.at)
+  }
+
+  // One session is asked for, so exactly one is projected: going through
+  // sessions() would build a summary — an LLM material window per session — for
+  // the whole fleet on every poll of one card's detail panel.
   function sessionDetail(res, id) {
     const s = adapter.sessions().find(x => x.id === id)
     if (!s) return res.writeHead(404, { 'content-type': 'application/json' }).end('{"error":"unknown session"}')
-    return json(res, s)
+    return json(res, { ...withSummary(s), timeline: timeline(id) })
   }
 
   async function exportSession(req, res, u) {
@@ -380,7 +427,11 @@ async function runDaemon(args) {
   let notify = () => {}
   const onChange = () => notify()
   const adapter = composeAdapters([createClaudeAdapter({ onChange }), createOpencodeAdapter({ onChange })])
-  const server = createServer({ adapter })
+  // No key, or an explicit opt-out, and the daemon simply never has a summary
+  // field — the dashboard falls back to the last prompt, which is what it does
+  // while a summary is still being written anyway.
+  const summarizer = await makeSummarizer(onChange)
+  const server = createServer({ adapter, summarizer })
   notify = () => server.notify()
 
   let port
@@ -391,10 +442,29 @@ async function runDaemon(args) {
   if (args.open) openBrowser(`http://localhost:${port}`)
   const shutdown = () => {
     try { adapter.stop() } catch {}
+    try { summarizer?.stop() } catch {}
     server.close(() => process.exit(0))
     setTimeout(() => process.exit(0), 1000).unref()
   }
   for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, shutdown)
+}
+
+// The key is read here and nowhere else, and only ever handed to the
+// summarizer — it never reaches a log line, an argument list or a unit file.
+async function makeSummarizer(onUpdate) {
+  const apiKey = process.env.OPENROUTER_API_KEY
+  if (!apiKey || process.env.AGENTTRAIL_NO_SUMMARY) return null
+  try {
+    const { createSummarizer } = await import('../lib/summarize.mjs')
+    return createSummarizer({ apiKey, onUpdate })
+  } catch (e) {
+    // Say why, or a typo in the module leaves a user with a key set, no
+    // summaries, and nothing anywhere to explain it. e.message is the module
+    // loader's — it names a path or a syntax error, never the key, which has
+    // not been passed to anything at this point.
+    console.error('agenttrail: summaries are off —', e.message)
+    return null
+  }
 }
 
 function openBrowser(url) {
