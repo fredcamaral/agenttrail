@@ -21,6 +21,22 @@ const AGENT_CAP = 12 // list views carry a slice of the tree; /session/<id> serv
 const SUMMARY_IDLE = 30 * 60e3   // an idle session colder than this is not worth an LLM call
 const TIMELINE_MS = 24 * 3600e3  // the mini-log window /session/<id> serves
 const TIMELINE_KINDS = new Set(['turn', 'pr', 'cost', 'title'])
+// A spawn prompt never changes, so a brief written from one is asked for once
+// per agent, ever — and only when a human clicks. The disk cache is what makes
+// that survive a restart; the version is a constant because there is nothing
+// for it to track.
+const BRIEF_VERSION = 'v1'
+const BRIEFER = {
+  system: 'Summarize in 1-2 sentences, at most 40 words, what this coding-agent task prompt asks for. '
+    + 'Same language as the prompt. No preamble.',
+  textMax: 360,
+  maxTokens: 160,
+  cacheFile: 'agent-briefs.json',
+  history: false,
+}
+// Agent ids are unique inside a session, not across the machine — two sessions
+// can carry the same id and must never be served each other's brief.
+const briefKey = (sessionId, agentId) => `${sessionId}:${agentId}`
 
 // A long-running session accumulates thousands of subagents — one real session
 // on mordor had 2603, a megabyte of JSON on its own. Cards need the newest
@@ -61,6 +77,10 @@ export function composeAdapters(adapters) {
     // Same reasoning, and the same default: an adapter that does not know the
     // id — or has no replay to speak of — is not holding anything back.
     caughtUp: id => { for (const a of live) if (a.caughtUp?.(id) === false) return false; return true },
+    // The raw prompt an agent was spawned with. Asked for one agent at a time,
+    // by /brief only — an adapter that does not know the pair answers null, and
+    // one with no subagents at all does not define the method.
+    spawnPrompt: (sessionId, agentId) => { for (const a of live) { const v = a.spawnPrompt?.(sessionId, agentId); if (v) return v } return null },
     exportPath: id => firstOf(id, a => a.exportPath(id)),
     distill: id => firstOf(id, a => a.distill(id)),
     stop: () => { for (const a of live) { try { a.stop() } catch {} } },
@@ -102,7 +122,7 @@ export function parseArgs(argv) {
 // ---------- HTTP + SSE ----------
 // adapter is injected so tests can drive the server with a stub. The daemon
 // passes the real Claude Code adapter; wave 2 merges opencode sessions in.
-export function createServer({ adapter, summarizer = null, host = os.hostname(), version = VERSION } = {}) {
+export function createServer({ adapter, summarizer = null, briefer = null, host = os.hostname(), version = VERSION } = {}) {
   if (!adapter) throw new Error('createServer needs an adapter')
   const clients = new Set()
   const seen = new Map() // session id -> {sig, lastEventAt, heavySig} — what subscribers already hold
@@ -128,7 +148,34 @@ export function createServer({ adapter, summarizer = null, host = os.hostname(),
     const summary = summarizer.get(s.id, adapter.material?.(s.id) ?? null)
     return summary ? { ...s, summary } : s   // no summary yet is an absent field, not a null
   }
-  const sessions = () => (summarizer ? adapter.sessions().map(withSummary) : adapter.sessions())
+
+  // A spawn prompt is material for a model call, never a field: it is stripped
+  // from every agent object this daemon serves, so the only thing that ever
+  // leaves is a brief a human asked for. `briefable` is what lets the UI offer
+  // that button, and it is NOT "the prompt rode this payload": the emit path
+  // reads prompts for the newest agents only, so on a session with thousands of
+  // them the finished rows actually on screen would lose the button while
+  // /brief would happily serve one. A transcript is what makes the prompt
+  // readable on demand, so a transcript is the promise. peek() only: rendering
+  // a card must never cost a request, whatever the tick rate is.
+  const withBrief = (sid) => (a) => {
+    if (!a || !('spawnPrompt' in a)) return a
+    const { spawnPrompt, ...rest } = a
+    rest.briefable = spawnPrompt != null || a.transcriptPath != null
+    if (briefer) rest.brief = briefer.peek(briefKey(sid, a.agentId))?.text ?? null
+    return rest
+  }
+  // The two places an agent object is served from: the tree, and the running
+  // slice each workflow carries (which rides even a trimmed delta, where
+  // `agents` does not).
+  const withBriefs = (s) => {
+    const o = { ...s }, one = withBrief(s.id)
+    if (o.agents) o.agents = o.agents.map(a => one(a))
+    if (o.workflows) o.workflows = o.workflows.map(w => (w.runningAgents ? { ...w, runningAgents: w.runningAgents.map(a => one(a)) } : w))
+    return o
+  }
+  const project = (s) => withBriefs(withSummary(s))
+  const sessions = () => adapter.sessions().map(project)
 
   const boundPort = () => { const a = server.address(); return a && typeof a === 'object' ? a.port : null }
   const fullModel = () => ({ host, port: boundPort(), now: Date.now(), sessions: sessions().map(listView) })
@@ -195,6 +242,7 @@ export function createServer({ adapter, summarizer = null, host = os.hostname(),
     if (p === '/model') return json(res, fullModel())
     if (p === '/events') return openStream(req, res)
     if (p === '/digest') return json(res, digestResponse(u))
+    if (p === '/brief') return brief(req, res, u)
     if (p === '/export') return exportSession(req, res, u)
     if (p.startsWith('/session/')) return sessionDetail(res, safeDecode(p.slice('/session/'.length)))
     res.writeHead(404, { 'content-type': 'text/plain' }).end('not found')
@@ -231,13 +279,43 @@ export function createServer({ adapter, summarizer = null, host = os.hostname(),
     return out.sort((a, b) => a.at - b.at)
   }
 
+  // The only path here that spends money, and only because someone clicked. The
+  // prompt is fetched from the adapter and handed straight to the model — it is
+  // never put in the response, which carries the brief alone. A second click
+  // while the first is in the air joins that request instead of paying twice,
+  // and the answer is cached, so every later payload serves it from peek().
+  //
+  // The Host check upstream stops a rebound name; it does not stop a page you
+  // already have open from POSTing here in the background and spending this
+  // machine's key one agent at a time. So the one endpoint that costs money
+  // names its callers too: an Origin the Host allowlist would not accept is a
+  // 403 before anything is read, and a malformed one is not given the benefit
+  // of the doubt. No Origin at all is a program, not a page — curl, a script,
+  // the daemon's own probe — and passes.
+  async function brief(req, res, u) {
+    if (!originAllowed(req.headers.origin)) return json(res, { error: 'forbidden origin' }, 403)
+    if (req.method !== 'POST') return json(res, { error: 'POST required' }, 405)
+    if (!briefer) return json(res, { error: 'summaries are off' }, 503)
+    const sessionId = u.searchParams.get('session') || ''
+    const agentId = u.searchParams.get('agent') || ''
+    const text = adapter.spawnPrompt?.(sessionId, agentId)
+    if (!text) return json(res, { error: 'no prompt for that agent' }, 404)
+    const out = await briefer.generate(briefKey(sessionId, agentId), { version: BRIEF_VERSION, text })
+    return out ? json(res, { text: out.text }) : json(res, { text: null }, 502)
+  }
+
+  function originAllowed(origin) {
+    if (!origin) return true
+    try { return hostAllowed(new URL(origin).host, host) } catch { return false }
+  }
+
   // One session is asked for, so exactly one is projected: going through
   // sessions() would build a summary — an LLM material window per session — for
   // the whole fleet on every poll of one card's detail panel.
   function sessionDetail(res, id) {
     const s = adapter.sessions().find(x => x.id === id)
     if (!s) return res.writeHead(404, { 'content-type': 'application/json' }).end('{"error":"unknown session"}')
-    return json(res, { ...withSummary(s), timeline: timeline(id) })
+    return json(res, { ...project(s), timeline: timeline(id) })
   }
 
   async function exportSession(req, res, u) {
@@ -325,8 +403,8 @@ function serveUI(res) {
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(html)
 }
 
-function json(res, obj) {
-  res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(obj))
+function json(res, obj, status = 200) {
+  res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(obj))
 }
 
 function safeDecode(s) { try { return decodeURIComponent(s) } catch { return s } }
@@ -456,7 +534,10 @@ async function runDaemon(args) {
   // field — the dashboard falls back to the last prompt, which is what it does
   // while a summary is still being written anyway.
   const summarizer = await makeSummarizer(onChange)
-  const server = createServer({ adapter, summarizer })
+  // Same key, same model, a different question — and its own cache file, so a
+  // brief and a session title never share an id's slot.
+  const briefer = await makeSummarizer(onChange, BRIEFER)
+  const server = createServer({ adapter, summarizer, briefer })
   notify = () => server.notify()
 
   let port
@@ -468,6 +549,7 @@ async function runDaemon(args) {
   const shutdown = () => {
     try { adapter.stop() } catch {}
     try { summarizer?.stop() } catch {}
+    try { briefer?.stop() } catch {}
     server.close(() => process.exit(0))
     setTimeout(() => process.exit(0), 1000).unref()
   }
@@ -476,12 +558,12 @@ async function runDaemon(args) {
 
 // The key is read here and nowhere else, and only ever handed to the
 // summarizer — it never reaches a log line, an argument list or a unit file.
-async function makeSummarizer(onUpdate) {
+async function makeSummarizer(onUpdate, opts) {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey || process.env.AGENTTRAIL_NO_SUMMARY) return null
   try {
     const { createSummarizer } = await import('../lib/summarize.mjs')
-    return createSummarizer({ apiKey, onUpdate })
+    return createSummarizer({ apiKey, onUpdate, ...opts })
   } catch (e) {
     // Say why, or a typo in the module leaves a user with a key set, no
     // summaries, and nothing anywhere to explain it. e.message is the module
