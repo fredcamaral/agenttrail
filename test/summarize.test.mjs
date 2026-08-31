@@ -2,7 +2,7 @@
 // every byte it writes goes to a tmpdir. No test reads OPENROUTER_API_KEY, no
 // test reaches the network, and the fake key below is what proves the real one
 // would never surface in a log, a throw or a file.
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -116,6 +116,164 @@ test('the request carries both caps: a 3-4 word title asked, 4000 chars of mater
   assert.equal(hit.text.length, 64, 'a model that ignores the word limit is cut by the code');
   assert.equal(hit.text, long.trim().slice(0, 64));
   s.stop();
+});
+
+// ---- a second summarizer ----------------------------------------------------
+// The knobs exist so agent briefs can reuse this machine to answer a different
+// question. The tests above are the defaults, untouched, and they are what says
+// the session titles did not change shape when the options arrived.
+
+test('every knob is an option: a second summarizer asks its own question, into its own file', async () => {
+  const dir = tmp();
+  const fetchImpl = stub(reply('X'.repeat(500)));
+  const s = createSummarizer({
+    apiKey: KEY, dir, minIntervalMs: 0, fetchImpl,
+    system: 'Summarize the task prompt in 1-2 sentences.',
+    textMax: 360, maxTokens: 160, cacheFile: 'agent-briefs.json', history: false,
+  });
+
+  s.get('agent-1', material('v1', 'M'.repeat(9000)));
+  await settle();
+
+  const { body } = fetchImpl.calls[0];
+  assert.equal(body.max_tokens, 160);
+  assert.equal(body.messages[0].content, 'Summarize the task prompt in 1-2 sentences.');
+  assert.equal(body.messages[1].content.length, 4000, 'what one call may cost is the module\'s rule, not a knob');
+  assert.equal(s.get('agent-1', material('v1')).text.length, 360, 'and the reply is cut at the caller\'s limit');
+
+  assert.deepEqual(fs.readdirSync(dir), ['agent-briefs.json'], 'its own cache, and history:false writes no log at all');
+  assert.deepEqual(s.history('agent-1'), [], 'not a log nobody reads — no log');
+  s.stop();
+});
+
+// A tree of subagents arrives all at once, so the first tick after a boot can
+// meet eighty ids nobody has ever summarized. Without a global cap that is
+// eighty requests in one breath.
+test('the in-flight cap bounds a burst, and the ids over it are only postponed', async () => {
+  const fetchImpl = stub(() => new Promise(() => {}));   // every request stays in the air
+  const s = createSummarizer({ apiKey: KEY, dir: tmp(), minIntervalMs: 0, fetchImpl });
+  for (const id of ['a', 'b', 'c', 'd', 'e']) s.get(id, material('v1'));
+  await settle();
+  assert.equal(fetchImpl.calls.length, 4, 'four slots, four requests — the fifth id costs nothing');
+  s.stop();
+
+  // Nothing was consumed by being turned away: the id that waited is picked up
+  // by the next call, once a slot is actually free.
+  const pending = [];
+  const f2 = stub(() => new Promise((r) => pending.push(r)));
+  const s2 = createSummarizer({ apiKey: KEY, dir: tmp(), minIntervalMs: 0, fetchImpl: f2, maxInflight: 1 });
+  s2.get('a', material('v1'));
+  s2.get('b', material('v1'));
+  await settle();
+  assert.equal(f2.calls.length, 1, 'one slot, one request');
+
+  pending.shift()(reply('done'));
+  await settle();
+  s2.get('b', material('v1'));
+  await settle();
+  assert.equal(f2.calls.length, 2, 'the slot freed and the id that waited was retried, not blacklisted');
+  s2.stop();
+});
+
+test('peek() reads the cache and never fires anything', async () => {
+  const fetchImpl = stub(reply('a brief'));
+  const s = createSummarizer({ apiKey: KEY, dir: tmp(), minIntervalMs: 0, fetchImpl });
+
+  assert.equal(s.peek('agent-1'), null);
+  await settle();
+  assert.equal(fetchImpl.calls.length, 0, 'serving a payload must never cost a model call');
+
+  assert.deepEqual(await s.generate('agent-1', material('v1')), { text: 'a brief' });
+  const hit = s.peek('agent-1');
+  assert.equal(hit.text, 'a brief');
+  assert.equal(Number.isFinite(hit.at), true);
+  assert.deepEqual(Object.keys(hit).sort(), ['at', 'text']);
+  s.stop();
+});
+
+test('generate() awaits one request per id: a second click joins the first, a cached one is free', async () => {
+  const fetchImpl = stub(reply('what the agent was asked to do'));
+  const s = createSummarizer({ apiKey: KEY, dir: tmp(), minIntervalMs: 0, fetchImpl });
+
+  const [a, b, c] = await Promise.all([
+    s.generate('agent-1', material('v1')),
+    s.generate('agent-1', material('v1')),   // the impatient second click
+    s.generate('agent-2', material('v1')),
+  ]);
+  assert.equal(a.text, 'what the agent was asked to do');
+  assert.deepEqual(b, a, 'the second caller was answered by the first caller\'s request');
+  assert.equal(c.text, 'what the agent was asked to do');
+  assert.equal(fetchImpl.calls.length, 2, 'two agents, two requests — never three');
+
+  assert.deepEqual(await s.generate('agent-1', material('v1')), { text: 'what the agent was asked to do' });
+  assert.equal(fetchImpl.calls.length, 2, 'and material that never changes is never paid for twice');
+  s.stop();
+});
+
+test('generate() answers null on failure and on nothing to send, never a throw', async () => {
+  const fetchImpl = stub(() => ({ ok: false, status: 500, json: async () => ({}) }));
+  const s = createSummarizer({ apiKey: KEY, dir: tmp(), minIntervalMs: 0, fetchImpl });
+
+  assert.equal(await s.generate('agent-1', material('v1')), null, 'a dead model is a missing brief, not a 500 at the caller');
+  assert.equal(await s.generate('agent-1', null), null);
+  assert.equal(await s.generate('agent-1', { version: 'v1', text: '' }), null);
+  assert.equal(fetchImpl.calls.length, 1, 'and nothing to summarize was never a request');
+  s.stop();
+
+  const after = createSummarizer({ apiKey: KEY, dir: tmp(), minIntervalMs: 0, fetchImpl });
+  after.stop();
+  assert.equal(await after.generate('agent-1', material('v1')), null, 'a stopped summarizer generates nothing');
+});
+
+// A transport that throws before it ever suspends runs refresh()'s finally
+// synchronously, so the slot is already released by the time the promise for it
+// exists. Publishing it anyway would leave an id holding a settled promise no
+// caller can ever be answered by.
+test('a fetch that throws before it suspends releases the slot instead of wedging the id', async () => {
+  // Deliberately NOT the async stub above, whose throw is only ever a rejected
+  // promise: a plain function that throws runs refresh()'s catch and finally
+  // synchronously, before the promise to publish for that id even exists.
+  let n = 0;
+  const fetchImpl = () => {
+    if (++n === 1) throw new Error('ECONNREFUSED');
+    return Promise.resolve(reply('second time lucky'));
+  };
+  mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  try {
+    const s = createSummarizer({ apiKey: KEY, dir: tmp(), minIntervalMs: 0, fetchImpl });
+
+    assert.equal(await s.generate('agent-1', material('v1')), null);
+    mock.timers.tick(300_001);   // the cooldown that failure bought, waited out
+    assert.deepEqual(await s.generate('agent-1', material('v1')), { text: 'second time lucky' },
+      'the next click really is a new request, not an await on something long dead');
+    s.stop();
+  } finally { mock.timers.reset(); }
+});
+
+// /brief calls generate() straight off a click, so without this gate a reader
+// tapping a dead button is an unbounded stream of paid requests — precisely the
+// bound get() has always had, and the reason the cooldown exists at all.
+test('generate() waits out the cooldown a failure bought, then really does retry', async () => {
+  const fetchImpl = stub((n) => (n === 1 ? { ok: false, status: 500, json: async () => ({}) } : reply('worth the wait')));
+  mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  try {
+    const s = createSummarizer({ apiKey: KEY, dir: tmp(), minIntervalMs: 0, fetchImpl });
+
+    assert.equal(await s.generate('ag', material('v1')), null, 'the model is down');
+    assert.equal(fetchImpl.calls.length, 1);
+
+    for (let i = 0; i < 5; i++) assert.equal(await s.generate('ag', material('v1')), null, 'an impatient reader keeps clicking');
+    assert.equal(fetchImpl.calls.length, 1, 'and every one of those clicks was free');
+
+    mock.timers.tick(299_999);
+    assert.equal(await s.generate('ag', material('v1')), null);
+    assert.equal(fetchImpl.calls.length, 1, 'a second short of the cooldown is still inside it');
+
+    mock.timers.tick(2);
+    assert.deepEqual(await s.generate('ag', material('v1')), { text: 'worth the wait' }, 'past it, the click pays again');
+    assert.equal(fetchImpl.calls.length, 2, 'exactly one retry, not the six clicks that waited');
+    s.stop();
+  } finally { mock.timers.reset(); }
 });
 
 test('every failure is silent, keeps the old cache, and buys a cooldown', async () => {

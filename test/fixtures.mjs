@@ -204,6 +204,11 @@ export function makeFixture() {
         /** Backdate the transcript so it falls outside the "busy" window. */
         touch(msAgo) { const t = (Date.now() - msAgo) / 1000; fs.utimesSync(transcriptPath, t, t); return h; },
 
+        /**
+         * `prompt` opens the transcript with the spawn prompt every real
+         * subagent transcript starts with — a string, or the array of content
+         * blocks a record can carry instead.
+         */
         agent(a = {}) {
           const dir = a.workflowId
             ? path.join(projDir, id, 'subagents', 'workflows', a.workflowId)
@@ -216,7 +221,12 @@ export function makeFixture() {
             ...(a.parentAgentId ? { parentAgentId: a.parentAgentId } : {}),
           }));
           const jsonl = path.join(dir, `agent-${agentId}.jsonl`);
-          fs.writeFileSync(jsonl, (a.lines ?? ['{"type":"assistant"}']).join('\n') + '\n');
+          const lines = [...(a.lines ?? ['{"type":"assistant"}'])];
+          if (a.prompt !== undefined) {
+            lines.unshift(JSON.stringify(
+              rec.userPrompt({ sessionId: id, cwd, version, gitBranch, text: a.prompt })));
+          }
+          fs.writeFileSync(jsonl, lines.join('\n') + '\n');
           if (a.mtimeMs) { const t = a.mtimeMs / 1000; fs.utimesSync(jsonl, t, t); }
           return agentId;
         },

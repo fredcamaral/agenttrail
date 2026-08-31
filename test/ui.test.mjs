@@ -60,7 +60,9 @@ function boot (opts = {}) {
     localStorage: { getItem: k => (k === 'at-seen' && opts.seen ? String(opts.seen) : null), setItem: () => {} },
     EventSource: function () { Object.assign(sse, this); return sse },
     setInterval: () => 0,
-    fetch: url => { calls.push(url); return (opts.fetch || (() => ({ ok: false })))(url) },
+    // init reaches the stub too: a brief is asked for with POST, and a test that
+    // cannot see the verb cannot tell a request apart from a read.
+    fetch: (url, init) => { calls.push(url); return (opts.fetch || (() => ({ ok: false })))(url, init) },
     // the page asks one question — is this screen at least 760px — and answers
     // "phone" if the environment cannot say. boot({phone:true}) is that screen.
     matchMedia: () => ({ matches: !opts.phone }),
@@ -407,18 +409,203 @@ test('the digest opens on the last visit and drills into a live session by keybo
 
 test('agent, workflow, todo and digest fields are escaped', async () => {
   const bad = '<img src=q onerror=alert(1)>'
+  const worse = '<svg onload=alert(2)>'   // a brief is prompt text a human wrote
   const ui = boot({
     fetch: url => ok(url.startsWith('/digest')
       ? { entries: [{ sessionId: 'a1', name: bad, title: bad, prs: [{ number: bad, url: 'javascript:alert(1)' }], lastAt: 1 }] }
-      : D({ agents: [{ agentId: bad, type: bad, description: bad, status: 'done', workflowId: bad }], workflows: [{ id: bad }], todos: [{ content: bad, status: 'pending' }], recentTools: [{ name: bad, detail: bad, at: 1, ms: 5 }] }))
+      : D({
+        agents: [{ agentId: bad, type: bad, description: bad, status: 'done', workflowId: bad },
+          { agentId: 'nb', type: bad, brief: worse, status: 'running', workflowId: bad },
+          { agentId: 'cb', type: bad, description: 'named', brief: worse, status: 'running', workflowId: bad }],
+        workflows: [{ id: bad, description: bad }],
+        todos: [{ content: bad, status: 'pending' }],
+        recentTools: [{ name: bad, detail: bad, at: 1, ms: 5 }]
+      }))
   })
   ui.send({ sessions: [S('a1')] })
   ui.card('a1'); await flush()
-  assert.ok(!/<img /.test(ui.body.innerHTML), 'nothing raw from the tree, todos or tools')
+  assert.ok(!/<img |<svg /.test(ui.body.innerHTML), 'nothing raw from the tree, its briefs, todos or tools')
   assert.match(ui.body.innerHTML, /data-wf="&lt;img/, 'not even inside an attribute')
+  assert.match(ui.body.innerHTML, /class="v">&lt;svg onload=alert\(2\)&gt;<\/span>/, 'a brief standing in for a missing description')
+  assert.match(ui.body.innerHTML, /class="hint c2">&lt;svg onload=alert\(2\)&gt;</, 'and the same brief captioning a row that has one')
   ui.openDigest(); await flush()
   assert.ok(!/<img /.test(ui.body.innerHTML), 'nothing raw from the digest')
   assert.match(ui.body.innerHTML, /href="#"/, 'a javascript: PR url is neutralised')
+})
+
+// ---- what an agent was told to do -----------------------------------------
+// `workflow-subagent af6302b09acea052f` is a row with no intent in it. The brief
+// is what the spawner actually asked for, in prose: it names the row when there
+// is nothing better, and captions it when there is.
+
+test('an agent with no description is named by its brief, not its raw id', async () => {
+  const agents = [{ agentId: 'af6302b09acea052f', type: 'workflow-subagent', brief: 'Implement the CEL evaluator behind the existing interface.', status: 'running', startedAt: 1 }]
+  const ui = boot({ fetch: () => ok(D({ agents })) })
+  ui.send({ sessions: [S('a1')] })
+  ui.card('a1'); await flush()
+  const html = ui.body.innerHTML
+  assert.deepEqual(treeOf(html).map(x => [x.k, x.v]), [
+    ['br-sfn', ''],
+    ['workflow-subagent', 'Implement the CEL evaluator behind the existing interface.']
+  ], 'the type still labels the row; the brief is what the row is about')
+  assert.ok(!html.includes('af6302b09acea052f'), 'the raw id never reaches the reader')
+  assert.ok(!html.includes('class="hint c2"'), 'and a name is not repeated as a caption under itself')
+
+  // the phone panel names its rows the same way, with the type as a last resort
+  const ui2 = boot({ phone: true, fetch: () => ok(D({ timeline: [] })) })
+  ui2.send({ sessions: [S('a1', { workflows: [{ id: 'w', name: 'wave1', running: 1, runningAgents: [{ agentId: 'af6302b09acea052f', brief: 'Implement the CEL evaluator.' }] }] })] })
+  ui2.card('a1'); await flush()
+  const inline = ui2.grid.children[0].innerHTML
+  assert.match(inline, /class="k">Implement the CEL evaluator\.<\/span>/)
+  assert.ok(!inline.includes('af6302b09acea052f'), 'the id is the fallback of last resort on both panels')
+})
+
+test('a running agent wears its brief as a caption; a finished one does not', async () => {
+  const agents = [
+    { agentId: 'r', type: 'coder', description: 'phase 3', brief: 'Implement the evaluator, tests first.', status: 'running', startedAt: 2 },
+    { agentId: 'd', type: 'coder', description: 'phase 2', brief: 'Implement the rule store.', status: 'done', startedAt: 1 }
+  ]
+  const ui = boot({ fetch: () => ok(D({ agents })) })
+  ui.send({ sessions: [S('a1')] })
+  ui.card('a1'); await flush()
+  const html = ui.body.innerHTML
+  assert.match(html, /class="hint c2">Implement the evaluator, tests first\.</, 'the row still moving says what it was told to do')
+  assert.ok(!html.includes('Implement the rule store'), 'and a list of finished ones stays a list')
+  assert.deepEqual(treeOf(html).map(x => x.v), ['', 'phase 3', 'phase 2'], 'a caption is not a node in the tree')
+})
+
+test('a 360-char brief arrives clamped, and hostile prose in it never survives raw', async () => {
+  const brief = ('<img src=q onerror=alert(1)> the daemon summarised the spawn prompt into prose. '.repeat(6)).slice(0, 360)
+  assert.equal(brief.length, 360, 'the longest thing the daemon will send')
+  const ui = boot({ fetch: () => ok(D({ agents: [{ agentId: 'r', type: 'coder', description: 'phase 3', brief, status: 'running', startedAt: 1 }] })) })
+  ui.send({ sessions: [S('a1')] })
+  ui.card('a1'); await flush()
+  const html = ui.body.innerHTML
+  assert.ok(!/<img /.test(html), 'prose from a model is escaped like anything else')
+  assert.match(html, /<span class="hint c2">&lt;img src=q onerror=alert\(1\)&gt; the daemon/, 'two lines, whatever the length')
+  assert.equal(html.split('class="hint c2"').length - 1, 1, 'one clamped caption, not one row per sentence')
+})
+
+// The caption hangs under its row, so the lines that were open above it have to
+// keep going past it — and the line of a LAST child has to stay closed.
+test('a caption keeps the guides above it open, and only where they belong', async () => {
+  const agents = [
+    { agentId: 'p', description: 'parent', status: 'running', startedAt: 1 },
+    { agentId: 'm', parentAgentId: 'p', description: 'middle', brief: 'first brief', status: 'running', startedAt: 2 },
+    { agentId: 'l', parentAgentId: 'p', description: 'last', brief: 'second brief', status: 'running', startedAt: 3 }
+  ]
+  const ui = boot({ fetch: () => ok(D({ agents })) })
+  ui.send({ sessions: [S('a1')] })
+  ui.card('a1'); await flush()
+  const html = ui.body.innerHTML
+  assert.match(html, /class="g">   │  <\/span><span class="hint c2">first brief/, "a middle child's caption keeps the branch below it reachable")
+  assert.match(html, /class="g">      <\/span><span class="hint c2">second brief/, 'and the last one closes its line instead of drawing a phantom branch')
+  assert.deepEqual(treeOf(html).map(x => [x.g, x.v]),
+    [['', ''], ['└─', 'parent'], ['   ├─', 'middle'], ['   └─', 'last']], 'the rows themselves are untouched')
+})
+
+test('the sheet says what a workflow is for, under its summary row', async () => {
+  const agents = [{ agentId: 'x', workflowId: 'wf_1', description: 'phase 1', status: 'running', startedAt: 1 }]
+  const workflows = [{ id: 'wf_1', name: 'wave1', description: 'pivot the session model onto canonical identity' }]
+  const ui = boot({ fetch: () => ok(D({ agents, workflows })) })
+  ui.send({ sessions: [S('a1')] })
+  ui.card('a1'); await flush()
+  const html = ui.body.innerHTML
+  assert.match(html, /<\/summary><div class="row"><span class="g">   <\/span><span class="hint c2">pivot the session model onto canonical identity<\/span>/,
+    'directly under the summary, on the line the group hangs from')
+  assert.match(html, /<details class="wf" data-wf="wf_1" open>/, 'and the group still opens and closes as it did')
+  assert.deepEqual(treeOf(html).map(x => [x.g, x.v]), [['', ''], ['└─', 'wave1'], ['   └─', 'phase 1']])
+})
+
+// Summarising a prompt costs a model call, so the row offers the trip instead of
+// taking it: the daemon says which agents it CAN summarise, and the reader picks.
+test('an agent the daemon can summarise offers a button; one already summarised does not', async () => {
+  const agents = [
+    { agentId: 'r', type: 'coder', description: 'phase 3', briefable: true, status: 'running', startedAt: 1 },
+    { agentId: 'q', type: 'coder', description: 'phase 2', briefable: true, brief: 'already known', status: 'running', startedAt: 2 },
+    { agentId: 'z', type: 'coder', description: 'phase 1', status: 'running', startedAt: 3 }
+  ]
+  const ui = boot({ fetch: () => ok(D({ agents })) })
+  ui.send({ sessions: [S('a1')] })
+  ui.card('a1'); await flush()
+  const html = ui.body.innerHTML
+  assert.equal(html.split('data-brief=').length - 1, 1, 'one button, on the one row that can still be asked about')
+  assert.match(html, /<button class="act" type="button" data-brief="r">brief<\/button>/)
+  assert.match(html, /class="hint c2">already known</, 'a brief in hand paints; it never asks again')
+})
+
+test('asking for a brief posts once and paints the answer where the caption goes', async () => {
+  const agents = [{ agentId: 'ag1', type: 'coder', description: 'phase 3', briefable: true, status: 'running', startedAt: 1 }]
+  const posts = []
+  const ui = boot({
+    fetch: (url, init) => {
+      if (!url.startsWith('/brief')) return ok(D({ agents }))
+      posts.push([url, init && init.method])
+      return ok({ text: '<img src=q onerror=alert(1)> ship the evaluator' })
+    }
+  })
+  ui.send({ sessions: [S('a1')] })
+  ui.card('a1'); await flush()
+
+  const click = () => fire(ui.body, 'click', hit({ '[data-brief]': { dataset: { brief: 'ag1' } } }))
+  click()
+  assert.match(ui.body.innerHTML, /data-brief="ag1" disabled>…</, 'the trip is visibly in progress')
+  click()   // an impatient second tap must not buy a second model call
+  await flush()
+  assert.deepEqual(posts, [['/brief?session=a1&agent=ag1', 'POST']], 'one request, naming the session and the agent')
+  const html = ui.body.innerHTML
+  assert.ok(!/<img /.test(html), 'what a model wrote is escaped like anything else')
+  assert.match(html, /class="hint c2">&lt;img src=q onerror=alert\(1\)&gt; ship the evaluator</)
+  assert.ok(!html.includes('data-brief'), 'and the button is gone, its answer in its place')
+})
+
+test('a brief the daemon could not write gives the button back', async () => {
+  const agents = [{ agentId: 'ag1', type: 'coder', description: 'phase 3', briefable: true, status: 'running', startedAt: 1 }]
+  let n = 0
+  const ui = boot({ fetch: url => (url.startsWith('/brief') ? (++n, { ok: false, status: 502 }) : ok(D({ agents }))) })
+  ui.send({ sessions: [S('a1')] })
+  ui.card('a1'); await flush()
+  fire(ui.body, 'click', hit({ '[data-brief]': { dataset: { brief: 'ag1' } } }))
+  await flush()
+  assert.equal(n, 1)
+  assert.match(ui.body.innerHTML, /data-brief="ag1">brief<\/button>/, 'a model that failed once is worth asking again')
+  assert.ok(!/class="hint c2"/.test(ui.body.innerHTML), 'and nothing was invented while it failed')
+})
+
+// 503 is not "try again": the daemon has no key, so that button would never work
+// on any row, on any click. Handing it back paints a live control over a dead
+// feature, and the reader learns that only by tapping it forever.
+test('a keyless daemon turns the offer off instead of handing the button back', async () => {
+  const agents = [
+    { agentId: 'ag1', type: 'coder', description: 'phase 3', briefable: true, status: 'running', startedAt: 1 },
+    { agentId: 'ag2', type: 'coder', description: 'phase 2', briefable: true, status: 'running', startedAt: 2 }
+  ]
+  let n = 0
+  const ui = boot({ fetch: url => (url.startsWith('/brief') ? (++n, { ok: false, status: 503 }) : ok(D({ agents }))) })
+  ui.send({ sessions: [S('a1')] })
+  ui.card('a1'); await flush()
+  const click = id => fire(ui.body, 'click', hit({ '[data-brief]': { dataset: { brief: id } } }))
+  click('ag1'); await flush()
+  assert.equal(n, 1)
+  const html = ui.body.innerHTML
+  assert.match(html, /data-brief="ag1" disabled>no key<\/button>/, 'the button says why it is dead')
+  assert.match(html, /data-brief="ag2" disabled>no key<\/button>/, 'and so does every other row — one key, one answer')
+  click('ag1'); click('ag2'); await flush()
+  assert.equal(n, 1, 'and no further click reaches the daemon')
+  assert.ok(!/class="hint c2"/.test(ui.body.innerHTML), 'nothing was invented while it failed')
+})
+
+test('asking from the phone panel does not fold the card the button sits in', async () => {
+  const wf = { id: 'w', name: 'wave1', running: 1, runningAgents: [{ agentId: 'ag1', description: 'phase 3', briefable: true }] }
+  const ui = boot({ phone: true, fetch: url => ok(url.startsWith('/brief') ? { text: 'ship the evaluator' } : D({ timeline: [] })) })
+  ui.send({ sessions: [S('a1', { workflows: [wf] })] })
+  ui.card('a1'); await flush()
+  assert.match(ui.grid.children[0].innerHTML, /data-brief="ag1">brief<\/button>/, 'the offer reaches the phone panel too')
+  fire(ui.grid, 'click', hit({ '[data-brief]': { dataset: { brief: 'ag1' } } }))
+  await flush()
+  const html = ui.grid.children[0].innerHTML
+  assert.match(html, /class="exp"/, 'the panel the button sits in is still open')
+  assert.match(html, /class="hint c2">ship the evaluator</)
 })
 
 // ---- the phone card: inline tree and mini-log ------------------------------
@@ -763,14 +950,15 @@ test('page keeps theme bootstrap, persisted toggle and drops the deleted familie
   for (const dead of ['fleet', 'inspector', 'expanded-node', 'expanded-plan', 'expanded-phase', 'plan-view', 'all-clear', 'switcher', 'canvas-hint', 'minimap', 'graph', 'PLAN.md', 'backfill', 'zoom', 'handoff', 'constellation']) {
     assert.ok(!HTML.includes(dead), `deleted: ${dead}`)
   }
-  // The 48KB wall bought the session tree: box-drawing guides computed from
-  // real position, the session itself as the root of both panels, and finished
-  // agents aggregated so a 320px card shows what is moving. It paid part of its
-  // own way — --ind/--ind-step went out, the glyph column being the indent now.
-  // Checked first, again: no class selector in the file is unused, so the wall
-  // moved on new behaviour, not on slack. 52KB is the next one, and the only
-  // thing left to sell for it is a real feature, not dead CSS.
-  assert.ok(HTML.length < 52000, `file is ${HTML.length} bytes`)
+  // The 52KB wall bought intent. A row that read `workflow-subagent af6302…`
+  // now says what that agent was told to do: as its name when nothing better
+  // exists, as a clamped caption when it has a description too, and as a button
+  // that asks the daemon to write one when nobody has paid for that call yet.
+  // It brought no class of its own — the caption is `.hint c2` inside a `.row`,
+  // the button the `.act` every other control uses — so the wall moved on new
+  // behaviour again, not on slack. 55KB is the next one, same rule: a real
+  // feature buys it, dead CSS does not.
+  assert.ok(HTML.length < 55000, `file is ${HTML.length} bytes`)
 })
 
 // A thumb needs ~44px, and every control the phone layout keeps reachable has to

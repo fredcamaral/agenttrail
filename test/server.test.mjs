@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { once } from 'node:events'
-import { buildUnit, createServer, digest, findDaemon, hostAllowed, loadEnvFile, parseArgs } from '../bin/agenttrail.mjs'
+import { buildUnit, composeAdapters, createServer, digest, findDaemon, hostAllowed, loadEnvFile, parseArgs } from '../bin/agenttrail.mjs'
 
 test('loadEnvFile fills only absent vars, skips junk, strips quotes, tolerates a missing file', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'at-env-'))
@@ -78,8 +78,27 @@ function stubSummarizer(over = {}) {
   }
 }
 
-async function withServer(adapter, fn, summarizer) {
-  const server = createServer({ adapter, summarizer, host: 'testbox', version: '9.9.9' })
+// The briefer seam. `cache` is read live, so a test can watch a served payload
+// pick up a brief that landed; `generated` records what was actually paid for.
+function stubBriefer(over = {}) {
+  const cache = over.cache || {}
+  const generated = []
+  return {
+    cache,
+    generated,
+    peek: id => (cache[id] ? { text: cache[id], at: 1 } : null),
+    generate: async (id, material) => {
+      generated.push({ id, material })
+      if (over.fail) return null
+      cache[id] = `brief of ${material.text}`
+      return { text: cache[id] }
+    },
+    stop: () => {},
+  }
+}
+
+async function withServer(adapter, fn, summarizer, briefer) {
+  const server = createServer({ adapter, summarizer, briefer, host: 'testbox', version: '9.9.9' })
   await new Promise(r => server.listen(0, '127.0.0.1', r))
   const base = `http://127.0.0.1:${server.address().port}`
   try { return await fn({ server, base }) }
@@ -275,7 +294,7 @@ test('a forged Host header is refused on every endpoint', async () => {
     const ask = (p, host) => new Promise((resolve, reject) => {
       http.get({ host: '127.0.0.1', port, path: p, headers: { host } }, res => { res.resume(); resolve(res.statusCode) }).on('error', reject)
     })
-    for (const p of ['/', '/whoami', '/model', '/events', '/digest', '/session/sess-a', '/export?session=sess-a&format=jsonl']) {
+    for (const p of ['/', '/whoami', '/model', '/events', '/digest', '/brief?session=sess-a&agent=a1', '/session/sess-a', '/export?session=sess-a&format=jsonl']) {
       assert.equal(await ask(p, 'attacker.example.com'), 403, `${p} answered a rebound origin`)
     }
     for (const h of [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, 'testbox', 'mordor.tail1a2b.ts.net']) {
@@ -416,6 +435,186 @@ test('with no summarizer the timeline is the journal alone and no session carrie
     assert.deepEqual(body.timeline.map(x => x.kind), ['turn', 'cost', 'pr', 'title'])
     assert.equal(body.agents.length, 1, 'and the session itself is served exactly as before')
   })
+})
+
+// ---- agent briefs -----------------------------------------------------------
+// A subagent's spawn prompt is a whole task description: repo paths, sometimes
+// pasted credentials, always more than a card can show. It is material for one
+// model call and nothing else, so it must not appear in any response — the
+// dashboard gets a brief a human asked for, or nothing.
+const PROMPT = 'Find every caller of postBalance and report the money path.'
+const briefedAgent = (over = {}) => ({
+  agentId: 'a1', parentAgentId: null, type: 'Explore', description: 'find the mapper',
+  model: 'opus', workflowId: null, status: 'running', startedAt: 1500, lastEventAt: 1900,
+  transcriptPath: '/x', spawnPrompt: PROMPT, ...over,
+})
+// a2 is the opencode shape: no subagent transcripts at all, so nothing can ever
+// be briefed. a3 is a claude agent past the emit path's recency cap — no prompt
+// rode this payload, but /brief would read one for it on demand.
+const briefedSession = () => session({
+  agents: [
+    briefedAgent(),
+    briefedAgent({ agentId: 'a2', spawnPrompt: null, transcriptPath: null }),
+    briefedAgent({ agentId: 'a3', spawnPrompt: null, status: 'done' }),
+  ],
+  workflows: [{
+    id: 'wf_1', name: 'lane 2', description: null, phase: null, agents: 1, done: 0, running: 1, startedAt: 1500,
+    runningAgents: [{ agentId: 'a1', description: 'find the mapper', currentTool: null, spawnPrompt: PROMPT }],
+  }],
+})
+
+test('a spawn prompt never leaves the daemon: served agents carry a brief and a briefable flag', async () => {
+  const adapter = stubAdapter()
+  adapter.state.sessions = [briefedSession()]
+  const briefer = stubBriefer({ cache: { 'sess-a:a1': 'Maps the PSP statement onto the ledger.' } })
+  await withServer(adapter, async ({ base }) => {
+    const sub = subscribe(base)
+    try {
+      const model = (await getJson(base, '/model')).body
+      assert.equal(JSON.stringify(model).includes('postBalance'), false, '/model must not carry the raw prompt')
+      assert.equal(JSON.stringify(model).includes('spawnPrompt'), false)
+
+      const s = model.sessions[0]
+      assert.equal(s.agents[0].brief, 'Maps the PSP statement onto the ledger.')
+      assert.equal(s.agents[0].briefable, true)
+      assert.equal('spawnPrompt' in s.agents[0], false)
+      assert.equal(s.agents[1].brief, null, 'nothing cached yet is a null brief, not a missing field')
+      assert.equal(s.agents[1].briefable, false, 'no transcript and no prompt: nothing to summarize, ever')
+      assert.equal(s.agents[2].briefable, true,
+        'a finished agent past the recency cap still has a transcript — the button must not vanish where /brief would answer')
+      assert.equal(s.workflows[0].runningAgents[0].brief, 'Maps the PSP statement onto the ledger.',
+        'the running slice is the other place an agent object is served from — and it rides trimmed deltas too')
+      assert.equal('spawnPrompt' in s.workflows[0].runningAgents[0], false)
+
+      const detail = (await getJson(base, '/session/sess-a')).body
+      assert.equal(JSON.stringify(detail).includes('postBalance'), false, '/session/<id> must not carry it either')
+      assert.equal(detail.agents[0].brief, 'Maps the PSP statement onto the ledger.')
+      assert.equal('spawnPrompt' in detail.agents[0], false)
+
+      await waitFor(() => sub.frames.length >= 1)
+      assert.equal(JSON.stringify(sub.frames[0]).includes('postBalance'), false, 'nor the SSE snapshot')
+      assert.equal(sub.frames[0].sessions[0].agents[0].brief, 'Maps the PSP statement onto the ledger.')
+    } finally { sub.close() }
+  }, null, briefer)
+})
+
+test('with no summarizer key the prompt is still stripped — there is simply nothing to show', async () => {
+  const adapter = stubAdapter()
+  adapter.state.sessions = [briefedSession()]
+  await withServer(adapter, async ({ base }) => {
+    const s = (await getJson(base, '/model')).body.sessions[0]
+    assert.equal('spawnPrompt' in s.agents[0], false, 'a daemon without a key must not turn into a prompt endpoint')
+    assert.equal('brief' in s.agents[0], false, 'and it promises nothing it cannot deliver')
+    assert.equal(s.agents[0].briefable, true, 'the prompt is there — what is missing is the key, which /brief says out loud')
+    assert.equal('spawnPrompt' in s.workflows[0].runningAgents[0], false)
+  })
+})
+
+test('POST /brief is the only path that spends money, and it spends it once', async () => {
+  const adapter = stubAdapter({ spawnPrompt: (sid, aid) => (sid === 'sess-a' && aid === 'a1' ? PROMPT : null) })
+  adapter.state.sessions = [briefedSession()]
+  const briefer = stubBriefer()
+  await withServer(adapter, async ({ base }) => {
+    const r = await fetch(`${base}/brief?session=sess-a&agent=a1`, { method: 'POST' })
+    assert.equal(r.status, 200)
+    assert.deepEqual(await r.json(), { text: `brief of ${PROMPT}` }, 'the click gets the brief, never the prompt back')
+    assert.deepEqual(briefer.generated.map(g => [g.id, g.material.version]), [['sess-a:a1', 'v1']],
+      'a prompt that cannot change has one version, forever — and the slot it is cached in names its session')
+
+    const s = (await getJson(base, '/model')).body.sessions[0]
+    assert.equal(s.agents[0].brief, `brief of ${PROMPT}`, 'and every later payload serves it from cache')
+    assert.equal(briefer.generated.length, 1, 'serving it did not pay for it again')
+
+    assert.equal((await fetch(`${base}/brief?session=sess-a&agent=nope`, { method: 'POST' })).status, 404,
+      'an agent with no prompt is a 404, not an empty brief')
+    assert.equal((await fetch(`${base}/brief?session=sess-a&agent=a1`)).status, 405, 'a GET must not be able to spend money')
+    assert.equal(briefer.generated.length, 1)
+  }, null, briefer)
+})
+
+test('a brief the model could not write is a 502, and one with no key at all is a 503', async () => {
+  const adapter = stubAdapter({ spawnPrompt: () => PROMPT })
+  await withServer(adapter, async ({ base }) => {
+    const r = await fetch(`${base}/brief?session=sess-a&agent=a1`, { method: 'POST' })
+    assert.equal(r.status, 502)
+    assert.deepEqual(await r.json(), { text: null })
+  }, null, stubBriefer({ fail: true }))
+
+  await withServer(adapter, async ({ base }) => {
+    const r = await fetch(`${base}/brief?session=sess-a&agent=a1`, { method: 'POST' })
+    assert.equal(r.status, 503, 'summaries being off is a state the UI can explain, not a silent nothing')
+    assert.match(r.headers.get('content-type'), /json/)
+  })
+})
+
+// The Host check stops a page that rebound this daemon's NAME. It does nothing
+// about a page keeping its own name and simply POSTing here in the background:
+// the browser sends the request, cookies and all, and every one of them spends
+// this machine's OpenRouter key. So the endpoint that costs money names its
+// callers too.
+const post = (port, path, headers = {}) => new Promise((resolve, reject) => {
+  const req = http.request({ host: '127.0.0.1', port, path, method: 'POST', headers }, res => {
+    res.resume()
+    res.on('end', () => resolve(res.statusCode))
+  })
+  req.on('error', reject)
+  req.end()
+})
+
+test('a cross-origin drive-by POST cannot spend the daemon key', async () => {
+  const adapter = stubAdapter({ spawnPrompt: () => PROMPT })
+  adapter.state.sessions = [briefedSession()]
+  const briefer = stubBriefer()
+  await withServer(adapter, async ({ server }) => {
+    const port = server.address().port
+    const url = '/brief?session=sess-a&agent=a1'
+    // a stranger, a stranger on a port, a sandboxed iframe, and a header that is
+    // not a URL at all — the last two are refused rather than waved through
+    for (const origin of ['http://evil.example.com', 'https://attacker.example.com:8443', 'null', 'not a url']) {
+      assert.equal(await post(port, url, { origin }), 403, `${origin} was allowed to POST`)
+    }
+    assert.deepEqual(briefer.generated, [], 'and not one of them reached the model')
+
+    for (const origin of [`http://127.0.0.1:${port}`, `http://localhost:${port}`, 'http://testbox', 'https://mordor.tail1a2b.ts.net']) {
+      assert.equal(await post(port, url, { origin }), 200, `${origin} is the dashboard itself`)
+    }
+    assert.equal(await post(port, url), 200, 'no Origin at all is a program — curl, a script — not a page')
+    assert.equal(briefer.generated.length, 5, 'exactly the callers the allowlist names')
+  }, null, briefer)
+})
+
+test('two sessions with the same agent id get their own brief, never each other\'s', async () => {
+  const prompts = { 'sess-a:a1': 'Trace the Pix settlement path.', 'sess-b:a1': 'Rewrite the reconciliation report.' }
+  const adapter = stubAdapter({ spawnPrompt: (sid, aid) => prompts[`${sid}:${aid}`] ?? null })
+  adapter.state.sessions = [briefedSession(), { ...briefedSession(), id: 'sess-b', agents: [briefedAgent()] }]
+  const briefer = stubBriefer()
+  await withServer(adapter, async ({ base }) => {
+    const ask = async sid => (await (await fetch(`${base}/brief?session=${sid}&agent=a1`, { method: 'POST' })).json()).text
+    assert.equal(await ask('sess-a'), 'brief of Trace the Pix settlement path.')
+    assert.equal(await ask('sess-b'), 'brief of Rewrite the reconciliation report.',
+      'the second session paid for its own instead of being handed the first one\'s')
+    assert.equal(briefer.generated.length, 2, 'one shared slot would have made this a single request')
+
+    const [a, b] = (await getJson(base, '/model')).body.sessions
+    assert.equal(a.agents[0].brief, 'brief of Trace the Pix settlement path.')
+    assert.equal(b.agents[0].brief, 'brief of Rewrite the reconciliation report.',
+      'and the payloads read the same two slots the writes went into')
+  }, null, briefer)
+})
+
+test('composeAdapters forwards spawnPrompt to the first source that knows the pair', () => {
+  const seen = []
+  const base = { sessions: () => [], digestEvents: () => [], exportPath: () => null, distill: () => null, stop: () => {} }
+  const src = (name, answer) => ({ ...base, spawnPrompt: (sid, aid) => { seen.push([name, sid, aid]); return answer } })
+  const quiet = { ...base }   // an adapter with no subagents at all does not define the method
+
+  assert.equal(composeAdapters([src('first', null), src('second', 'the real prompt'), quiet]).spawnPrompt('sess-x', 'ag-1'),
+    'the real prompt', 'the first truthy answer wins')
+  assert.deepEqual(seen, [['first', 'sess-x', 'ag-1'], ['second', 'sess-x', 'ag-1']],
+    'both halves of the pair reach every source in order, and the search stops at the answer')
+
+  assert.equal(composeAdapters([src('only', null), quiet]).spawnPrompt('sess-x', 'ag-1'), null,
+    'nobody knowing the pair is null, never a throw')
 })
 
 test('/export&format=jsonl streams the raw transcript as an attachment', async () => {
