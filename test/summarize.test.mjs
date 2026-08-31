@@ -91,7 +91,7 @@ test('minIntervalMs floors the cadence even when every tick brings new turns', a
   s.stop();
 });
 
-test('the request carries both caps: 25 words asked, 4000 chars of material sent, 180 chars kept', async () => {
+test('the request carries both caps: a 3-4 word title asked, 4000 chars of material sent, 64 chars kept', async () => {
   const long = 'palavra '.repeat(200);                       // ~1600 chars, far past the cap
   const fetchImpl = stub(reply(`  ${long}  `));
   const s = createSummarizer({ apiKey: KEY, dir: tmp(), minIntervalMs: 0, fetchImpl, model: 'test/model' });
@@ -102,14 +102,19 @@ test('the request carries both caps: 25 words asked, 4000 chars of material sent
   const { url, body } = fetchImpl.calls[0];
   assert.equal(url, 'https://openrouter.ai/api/v1/chat/completions');
   assert.equal(body.model, 'test/model');
-  assert.equal(body.max_tokens, 80);
-  assert.match(body.messages[0].content, /At most 25 words\./);
+  // Reasoning is billed against max_tokens, so a budget the model can spend
+  // thinking returns empty content and the card never gets a line. Off, plus
+  // slack — TEXT_MAX is what actually bounds the answer.
+  assert.equal(body.max_tokens, 64);
+  assert.deepEqual(body.reasoning, { enabled: false }, 'thinking tokens must not eat the answer');
+  assert.match(body.messages[0].content, /3-4 word title/);
   assert.match(body.messages[0].content, /No preamble\./);
+  assert.match(body.messages[0].content, /No trailing punctuation\./);
   assert.equal(body.messages[1].content.length, 4000, 'oversized material is cut before it is paid for');
 
   const hit = s.get('sess-1', material('v1'));
-  assert.equal(hit.text.length, 180, 'a model that ignores the word limit is cut by the code');
-  assert.equal(hit.text, long.trim().slice(0, 180));
+  assert.equal(hit.text.length, 64, 'a model that ignores the word limit is cut by the code');
+  assert.equal(hit.text, long.trim().slice(0, 64));
   s.stop();
 });
 
