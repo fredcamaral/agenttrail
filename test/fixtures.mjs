@@ -99,6 +99,12 @@ export const rec = {
     compactMetadata: { trigger: 'manual', preTokens: 200000, postTokens: 20000 },
   }),
 
+  // Real last-prompt records carry NO timestamp and sometimes no text at all.
+  lastPrompt: (o) => ({
+    type: 'last-prompt', sessionId: o.sessionId, leafUuid: uuid(),
+    ...(o.text === undefined ? {} : { lastPrompt: o.text }),
+  }),
+
   aiTitle: (o) => ({ type: 'ai-title', aiTitle: o.title, sessionId: o.sessionId }),
   customTitle: (o) => ({ type: 'custom-title', customTitle: o.title, sessionId: o.sessionId }),
   agentName: (o) => ({ type: 'agent-name', agentName: o.title, sessionId: o.sessionId }),
@@ -213,6 +219,31 @@ export function makeFixture() {
           fs.writeFileSync(jsonl, (a.lines ?? ['{"type":"assistant"}']).join('\n') + '\n');
           if (a.mtimeMs) { const t = a.mtimeMs / 1000; fs.utimesSync(jsonl, t, t); }
           return agentId;
+        },
+
+        /**
+         * The script the Workflow tool saved for this workflow, one level ABOVE
+         * subagents/. Pass `source` to write arbitrary (or corrupt) JS instead
+         * of a generated `export const meta` literal.
+         */
+        workflowScript(workflowId, o = {}) {
+          const src = o.source ?? [
+            'export const meta = {',
+            `  name: '${o.name ?? 'wave1'}',`,
+            `  description: '${o.description ?? 'do the thing'}',`,
+            '  phases: [',
+            ...(o.phases ?? ['Implement', 'Review']).map(
+              (t) => `    { title: '${t}', detail: 'x' },`),
+            '  ],',
+            '}',
+            '',
+            'const COMMON = `name: not-the-meta`',
+            'await agent({ description: "review:D-ui" })',
+          ].join('\n');
+          const file = path.join(projDir, id, 'workflows', 'scripts',
+            `${o.file ?? o.name ?? 'wave1'}-${workflowId}.js`);
+          w(file, src);
+          return h;
         },
 
         workflowJournal(workflowId, entries) {

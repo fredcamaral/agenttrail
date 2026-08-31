@@ -70,11 +70,14 @@ a{color:var(--accent)}
 .card.busy .st{color:var(--success)}
 .card.idle .st{color:var(--accent)}
 .card.shell .st{color:var(--dim)}
-.title{margin-top:8px;color:var(--text);font-size:var(--fs-3);line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* one line, whatever fills it: the summary, the last prompt, or the title */
+.title{display:flex;gap:8px;align-items:baseline;margin-top:8px;color:var(--text);font-size:var(--fs-3);line-height:18px}
 .title.none{color:var(--dim)}
+.title .v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.title .a{flex:none;margin-left:auto;color:var(--faint);font:400 var(--fs-1)/16px var(--mono);font-variant-numeric:tabular-nums}
 .meta{margin-top:4px;color:var(--dim);font:400 var(--fs-1)/16px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.meta .br{color:var(--accent)}
-.meta .sep{color:var(--faint)}
+.br{color:var(--accent)}
+.sep{color:var(--faint)}
 /* always rendered, so a tool starting or ending never resizes the card */
 .tool{display:flex;gap:8px;align-items:baseline;margin-top:4px;min-height:16px;color:var(--dim);font:400 var(--fs-1)/16px var(--mono);overflow:hidden;white-space:nowrap}
 .tool.none{color:var(--faint)}
@@ -135,6 +138,11 @@ button.row:hover{background:var(--hover)}
 .row.big{font:400 var(--fs-3)/18px var(--font);letter-spacing:-.01em}
 .row.big .v{white-space:normal}
 .hint{padding:8px 0;color:var(--faint);font:400 var(--fs-1)/17px var(--mono);overflow-wrap:anywhere}
+/* a workflow blurb is two lines of context, never a wall of prose that pushes
+   the agents under it off the screen */
+.c2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:normal}
+/* the phone's answer to the sheet: the detail unfolds inside the card itself */
+.exp{margin-top:8px;padding-top:8px;border-top:1px solid var(--hover)}
 .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
 .bar input{min-height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--soft);font:400 var(--fs-2)/16px var(--mono);color-scheme:inherit}
 .dls{display:flex;flex-wrap:wrap;gap:8px}
@@ -205,8 +213,27 @@ const cards=new Map()
 function srcBadge(src){const c=agentColor(src),ic=agentIcon(src)
   return`<span class="src" style="color:${c}" title="${esc(src||'unknown source')}">${ic?`<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="${c}" d="${ic}"/></svg>`:esc(agentGlyph(src))}</span>`}
 
+// A birth name goes stale on day three; repo · branch is what the session still
+// is. It only wins when the adapter actually derived one — otherwise the old
+// name is still the best label we have.
+function canon(s){
+  const c=s.canonical
+  if(!c||!c.repo)return null
+  const b=c.branch&&c.branch!=='HEAD'?String(c.branch):''
+  return{repo:String(c.repo),branch:b,text:String(c.repo)+(b?' · '+b:'')}
+}
+// What the session is doing, in one line, best evidence first: the LLM summary,
+// then what the human last asked for, then the title minted at birth.
+function headline(s){
+  const sum=s.summary&&s.summary.text?String(s.summary.text):''
+  if(sum)return{text:sum,at:+(s.summary.at)||0}
+  const lp=s.lastPrompt&&s.lastPrompt.text?String(s.lastPrompt.text):''
+  return{text:lp||String(s.title||''),at:0}
+}
+
 function cardHtml(s){
-  const st=stat(s),nm=String(s.name||s.title||s.id)
+  const st=stat(s),c=canon(s),nm=c?c.text:String(s.name||s.title||s.id)
+  const line=headline(s),open=expanded(s)   // expanded() is defined with the panel it belongs to
   const tool=s.currentTool||(s.recentTools||[])[0]
   const todos=s.todos||[],tdone=todos.filter(t=>t.status==='completed').length
   // list views trim agents[]; agentCount/agentsRunning carry the honest totals
@@ -221,12 +248,21 @@ function cardHtml(s){
   if(+s.lastEventAt>0)stats.push(`<span title="since the last transcript event">seen <span class="t-ago" data-at="${+s.lastEventAt}"></span></span>`)
   const prs=(s.prs||[]).slice(0,4).map(p=>`<a class="pr" href="${esc(href(p.url))}" target="_blank" rel="noopener noreferrer" title="${esc(p.repo||'')}">#${esc(p.number)}</a>`).join('')
   const q=encodeURIComponent(String(s.id??''))
-  return`<div class="card-head">${srcBadge(s.source)}<span class="name" title="${esc(nm)}">${esc(nm)}</span><span class="st">${esc(st)}</span></div>
-    <div class="title${s.title?'':' none'}" title="${esc(s.title||'')}">${esc(s.title||'no title yet')}</div>
-    <div class="meta" title="${esc(s.cwd||'')}">${esc(base(s.cwd)||'—')}${s.gitBranch?` <span class="sep">·</span> <span class="br">${esc(s.gitBranch)}</span>`:''}${s.model?` <span class="sep">·</span> ${esc(s.model)}`:''}${s.account?` <span class="sep">·</span> ${esc(s.account)}`:''}</div>
+  // the head already says repo · branch when canonical resolved, so the meta
+  // line spends its width on what is left instead of saying it twice
+  const dot=' <span class="sep">·</span> '
+  const mparts=[]
+  if(!c)mparts.push(esc(base(s.cwd)||'—')+(s.gitBranch?`${dot}<span class="br">${esc(s.gitBranch)}</span>`:''))
+  if(s.model)mparts.push(esc(s.model))
+  if(s.account)mparts.push(esc(s.account))
+  const nmHtml=c?`${esc(c.repo)}${c.branch?`${dot}<span class="br">${esc(c.branch)}</span>`:''}`:esc(nm)
+  return`<div class="card-head">${srcBadge(s.source)}<span class="name" title="${esc(nm)}">${nmHtml}</span><span class="st">${esc(st)}</span></div>
+    <div class="title${line.text?'':' none'}" title="${esc(line.text)}"><span class="v">${esc(line.text||'no title yet')}</span>${line.at>0?`<span class="a t-ago" data-at="${line.at}"></span>`:''}</div>
+    ${mparts.length?`<div class="meta" title="${esc(s.cwd||'')}">${mparts.join(dot)}</div>`:''}
     <div class="tool${tool?'':' none'}"${tool&&tool.detail?` title="${esc(tool.detail)}"`:''}>${tool?`<span class="tn">${esc(tool.name)}</span><span class="td">${esc(tool.detail||'')}</span><span class="ta t-ago" data-at="${+tool.at||0}"></span>`:'<span class="td">—</span>'}</div>
     ${stats.length?`<div class="stats">${stats.join('')}</div>`:''}
-    <div class="foot">${prs}<button class="act" type="button" data-open>details</button>${hasFile(s)?`<details class="dl"><summary>export</summary><div class="dl-menu"><a href="/export?session=${q}&amp;format=jsonl" download>Raw JSONL</a><a href="/export?session=${q}&amp;format=md" download>Markdown</a></div></details>`:''}</div>`
+    ${open?expHtml(s):''}
+    <div class="foot">${prs}<button class="act" type="button" data-open aria-expanded="${open}">details</button>${hasFile(s)?`<details class="dl"><summary>export</summary><div class="dl-menu"><a href="/export?session=${q}&amp;format=jsonl" download>Raw JSONL</a><a href="/export?session=${q}&amp;format=md" download>Markdown</a></div></details>`:''}</div>`
 }
 
 function renderCounts(){
@@ -274,21 +310,85 @@ const when=ms=>{try{return new Date(ms).toLocaleString()}catch{return String(ms)
 const sheet=$('sheet')
 let DET=null,DG=null,fetching=false,refetch=false
 
+// ---- inline expansion: the phone's answer to the sheet ---------------------
+// A modal on top of a 320px card hides the thing you tapped. Under 760px the
+// card unfolds in place instead; the sheet stays for screens that fit it.
+// The tree is drawn from the SSE session, so it keeps ticking with the grid —
+// only the mini-log needs the /session fetch the sheet already performs.
+const wide=()=>{try{return matchMedia('(min-width:760px)').matches}catch{return false}}
+const expanded=s=>!!(DET&&DET.inline&&DET.id===s.id)
+const hhmm=ms=>{const d=new Date(+ms);return +ms>0&&!isNaN(d)?d.toTimeString().slice(0,5):'--:--'}
+// timeline .data is opaque by contract, so the kinds we DO know are formatted
+// as what they mean — a turn is how long it took, a cost is money — and the
+// rest read the likely shapes, falling back to raw JSON rather than dropping a
+// row the daemon thought worth sending.
+const tlText=(k,d)=>d==null?'':typeof d!=='object'?String(d)
+  :k==='turn'&&Number.isFinite(d.durationMs)?dur(d.durationMs)
+  :k==='cost'&&Number.isFinite(d.totalUSD)?money(d.totalUSD)
+  :String(d.text??d.title??(d.number!=null?'#'+d.number:JSON.stringify(d)))
+
+function agentLine(a,ind){
+  const t=a&&a.currentTool
+  return`<div class="row running" style="--ind:${ind}"><span class="d"></span><span class="k">${esc((a&&(a.description||a.agentId))||'agent')}</span><span class="v">${t?esc(t.name)+(t.detail?' '+esc(t.detail):''):'—'}</span><span class="r">${t&&+t.at>0?`<span class="t-ago" data-at="${+t.at}"></span>`:''}</span></div>`
+}
+// Only what is moving. A finished workflow belongs in the log below, not in a
+// tree that is meant to answer "what is happening right now".
+function wfTree(s){
+  const wfs=(s.workflows||[]).filter(w=>w&&(+w.running>0||(w.runningAgents||[]).length))
+  const lone=(s.agents||[]).filter(a=>a&&a.status==='running'&&a.workflowId==null)
+  if(!wfs.length&&!lone.length)return''
+  let out=''
+  for(const w of wfs){
+    const p=w.phase
+    const r=p&&p.current?`${esc(p.current)} ${+p.done||0}/${+p.total||0}`:`${+w.done||0}/${+w.agents||0} done`
+    out+=`<div class="row running"><span class="d"></span><span class="v">${esc(w.name||w.id)}</span><span class="r">${r}</span></div>`
+    if(w.description)out+=`<div class="hint c2">${esc(w.description)}</div>`
+    for(const a of (w.runningAgents||[]).slice(0,6))out+=agentLine(a,1)
+  }
+  for(const a of lone.slice(0,6))out+=agentLine(a,0)
+  return`<div class="sec"><h2>running now</h2>${out}</div>`
+}
+const LOGROWS=40
+function miniLog(){
+  if(!DET)return''
+  const tl=DET.data&&Array.isArray(DET.data.timeline)?DET.data.timeline:null
+  const rows=!tl?(DET.full?'<div class="hint">nothing in the last 24h</div>':'<div class="hint">loading…</div>')
+    :!tl.length?'<div class="hint">nothing in the last 24h</div>'
+    // oldest-first by contract, so the tail is the newest and stays at the bottom
+    :tl.slice(-LOGROWS).map(x=>`<div class="row"><span class="k">${esc(hhmm(x&&x.at))}</span><span class="v">${esc((x&&x.kind)||'')} — ${esc(tlText(x&&x.kind,x&&x.data))}</span></div>`).join('')
+  return`<div class="sec"><h2>last 24h</h2>${rows}</div>`
+}
+function expHtml(s){
+  // the head shows one clipped line; here the prompt gets to be whole
+  const lp=s.lastPrompt&&s.lastPrompt.text?String(s.lastPrompt.text):''
+  return`<div class="exp">${lp?`<div class="sec"><h2>last prompt</h2><div class="hint">${esc(lp)}</div></div>`:''}${wfTree(s)}${miniLog()}</div>`
+}
+
 function openSheet(title,sub){sheetHtml='';txt('sheet-title',title);txt('sheet-sub',sub||'');if(sheet&&sheet.showModal&&!sheet.open)try{sheet.showModal()}catch{}}
 function closeSheet(){DET=DG=null;if(sheet&&sheet.close&&sheet.open)sheet.close()}
-on(sheet,'close',()=>{DET=DG=null})
+// close fires on a QUEUED task, so it can land AFTER openDetail() installed the
+// inline panel it closed the sheet for — clearing that DET would fold the card
+// the thumb just opened. An inline panel is never the dialog's to clear.
+on(sheet,'close',()=>{DG=null;if(!(DET&&DET.inline))DET=null})
 on(sheet,'click',e=>{if(e.target===sheet)closeSheet()})   // click the backdrop
 
 // ---- session detail -------------------------------------------------------
 // Cards carry a trimmed agents[]; the full tree comes from /session/<id>, so
 // an SSE tick that touches this session refetches instead of merging a slice.
-function openDetail(id){
+// sheetMode forces the dialog: a digest row lives inside it already, so drilling
+// in must not fold the sheet away to expand a card behind it.
+function openDetail(id,sheetMode){
   if(!id)return
+  const inline=!sheetMode&&!wide()
+  if(inline&&DET&&DET.inline&&DET.id===id){DET=null;render();return}   // second tap folds it back
   DG=null
+  if(inline&&sheet&&sheet.close&&sheet.open)sheet.close()   // fires close, which clears DET
   const s=S.get(id)||null
-  DET={id,data:s,full:false,gone:false}
-  openSheet(s&&(s.name||s.title)||id,s?`${stat(s)} · ${s.cwd||''}`:'')
-  renderDetail();loadDetail()
+  const c=s&&canon(s)
+  DET={id,data:s,full:false,gone:false,inline}
+  if(inline)render()
+  else{openSheet(c?c.text:(s&&(s.name||s.title))||id,s?`${stat(s)} · ${s.cwd||''}`:'');renderDetail()}
+  loadDetail()
 }
 async function loadDetail(){
   if(!DET)return
@@ -385,6 +485,7 @@ function prSection(s){
 }
 function renderDetail(){
   if(!DET)return
+  if(DET.inline)return render()   // the card is the panel; the grid repaint IS the render
   // A card pre-seeds DET.data from the grid, so a 404 must be checked BEFORE
   // the data: otherwise a dropped session keeps painting its last numbers.
   if(DET.gone){txt('sheet-sub','');return paint(`<div class="hint">the daemon no longer tracks this session</div>`)}
@@ -462,7 +563,7 @@ on($('sheet-body'),'click',e=>{
   const pick=t.closest('[data-i]')
   if(pick){const i=+pick.dataset.i,h=RANGES[i]&&RANGES[i][0];return setSince(h?Date.now()-h*3600e3:LAST_SEEN||Date.now()-24*3600e3,i)}
   const row=t.closest('[data-sid]')
-  if(row&&!t.closest('a'))openDetail(row.dataset.sid)
+  if(row&&!t.closest('a'))openDetail(row.dataset.sid,true)
 })
 // toggle does not bubble — capture phase is how one listener sees them all.
 on($('sheet-body'),'toggle',e=>{

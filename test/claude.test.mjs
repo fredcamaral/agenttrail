@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createClaudeAdapter, sameDomain, selfPidDomain } from '../lib/claude.mjs';
-import { makeFixture, deadPid } from './fixtures.mjs';
+import { makeFixture, deadPid, rec } from './fixtures.mjs';
 
 /** Build fixture + adapter, run body, always clean up. */
 async function withFx(body, adapterOpts = {}) {
@@ -540,6 +540,65 @@ test('title: last write wins across ai-title, custom-title and agent-name', asyn
   });
 });
 
+test('lastPrompt: the newest last-prompt record wins, capped, and survives a restart', async () => {
+  await withFx(async (fx, start) => {
+    const s = fx.session();
+    const long = 'p'.repeat(400);
+    s.add('turn', { at: Date.now() - 120_000 })
+      .add('lastPrompt', { text: 'primeira pergunta' })
+      .add('lastPrompt', {})                        // real records sometimes carry no text
+      .add('lastPrompt', { text: long });
+
+    const bare = fx.session();
+    bare.add('turn', {});
+
+    const a = start();
+    a.refresh();
+    const v = byId(a.sessions(), s.id);
+
+    assert.equal(v.lastPrompt.text.length, 280, 'the text is capped at 280 chars');
+    assert.equal(v.lastPrompt.text, long.slice(0, 280), 'last write wins');
+    assert.ok(v.lastPrompt.at > 0, 'a record with no timestamp still gets the session clock');
+    assert.ok(v.lastPrompt.at <= Date.now());
+    assert.equal(byId(a.sessions(), bare.id).lastPrompt, null, 'no prompt record means null');
+
+    // A pasted prompt is far past the sniff threshold: the allowlist must carry it.
+    s.add('lastPrompt', { text: 'LEDGER ' + 'z'.repeat(60_000) });
+    a.refresh();
+    assert.match(byId(a.sessions(), s.id).lastPrompt.text, /^LEDGER z+$/,
+      'a big last-prompt line is not skipped by the big-line sniff');
+  });
+});
+
+test('canonical: worktree, home and plain repo cwds each get a stable name', async () => {
+  await withFx(async (fx, start) => {
+    const plain = fx.session({ cwd: '/work/lerianstudio/matcher', gitBranch: 'feat/dedupe' });
+    plain.add('turn', {});
+    const srvWt = fx.session({ cwd: '/srv/worktrees/live-context', gitBranch: 'feat/live-context' });
+    srvWt.add('turn', {});
+    const deepWt = fx.session({ cwd: '/srv/worktrees/live-context/lib', gitBranch: 'HEAD' });
+    deepWt.add('turn', {});
+    const claudeWt = fx.session({ cwd: '/work/repo/.claude/worktrees/wave-3/bin' });
+    claudeWt.add('turn', {});
+    const atHome = fx.session({ cwd: '/fake/home' });
+    atHome.add('turn', {});
+
+    const a = start({ home: '/fake/home' });
+    a.refresh();
+    const v = a.sessions();
+    const c = (h) => byId(v, h.id).canonical;
+
+    assert.deepEqual(c(plain), { repo: 'matcher', branch: 'feat/dedupe' });
+    assert.deepEqual(c(srvWt), { repo: 'live-context', branch: 'feat/live-context' });
+    assert.deepEqual(c(deepWt), { repo: 'live-context', branch: 'HEAD' },
+      'a cwd INSIDE a worktree still names the worktree, and HEAD passes through');
+    assert.deepEqual(c(claudeWt), { repo: 'wave-3', branch: 'develop' });
+    assert.deepEqual(c(atHome), { repo: 'home', branch: 'develop' });
+    assert.equal(byId(v, plain.id).name, plain.id.slice(0, 8),
+      'canonical is additive: the birth name is left exactly as it was');
+  });
+});
+
 test('cost: the last cost-state record populates cost', async () => {
   await withFx(async (fx, start) => {
     const s = fx.session();
@@ -634,6 +693,117 @@ test('workflows: started without a result is running; a result closes it', async
   });
 });
 
+test('workflows: the saved script gives the workflow its name, description and phases', async () => {
+  await withFx(async (fx, start) => {
+    const s = fx.session();
+    const wf = 'wf_b77c8066-311';
+    const long = 'D'.repeat(400);
+    s.workflowScript(wf, {
+      name: 'wave1-session-pivot', description: long,
+      phases: ['Implement', 'Review', 'Ship'],
+    });
+    const a1 = s.agent({ workflowId: wf, description: 'implement:A-adapter' });
+    const a2 = s.agent({ workflowId: wf, description: 'review:D-ui' });
+    const a3 = s.agent({ workflowId: wf, description: 'review:E-server' });
+    s.workflowJournal(wf, [
+      { type: 'started', agentId: a1 }, { type: 'result', agentId: a1 },
+      { type: 'started', agentId: a2 },
+      { type: 'started', agentId: a3 },
+    ]);
+
+    const a = start();
+    a.refresh();
+    const w = byId(a.sessions(), s.id).workflows[0];
+
+    assert.equal(w.name, 'wave1-session-pivot');
+    assert.equal(w.description, long.slice(0, 200), 'the description is capped at 200 chars');
+    assert.deepEqual(w.phase, { current: 'Review', done: 1, total: 3 },
+      'the running agents label the phase; the journal counts it');
+    assert.deepEqual([w.agents, w.done, w.running], [3, 1, 2], 'the existing counters stay');
+    assert.ok(w.startedAt > 0);
+
+    assert.deepEqual(w.runningAgents.map((r) => r.description), ['review:D-ui', 'review:E-server']);
+    assert.ok(w.runningAgents.every((r) => 'currentTool' in r), 'every running agent carries a tool slot');
+    assert.ok(!w.runningAgents.some((r) => r.agentId === a1), 'a finished agent is not listed as running');
+  });
+});
+
+test('workflows: a missing or corrupt script yields nulls and never throws', async () => {
+  await withFx(async (fx, start) => {
+    const s = fx.session();
+    const bare = 'wf_no_script';
+    const torn = 'wf_torn_script';
+    const themeless = 'wf_no_phases';
+
+    s.agent({ workflowId: bare, description: 'orphan' });
+    s.workflowJournal(bare, [{ type: 'started', agentId: 'x' }]);
+
+    s.agent({ workflowId: torn, description: 'orphan' });
+    s.workflowScript(torn, { source: "export const meta = {\n  name: 'half-writ" });
+
+    s.agent({ workflowId: themeless, description: 'orphan' });
+    s.workflowScript(themeless, { source: "export const meta = {\n  name: 'themeless',\n}\n" });
+
+    const a = start();
+    a.refresh();
+    const byWf = Object.fromEntries(byId(a.sessions(), s.id).workflows.map((w) => [w.id, w]));
+
+    for (const id of [bare, torn]) {
+      assert.deepEqual([byWf[id].name, byWf[id].description, byWf[id].phase], [null, null, null], id);
+      assert.equal(byWf[id].agents, 1, `${id} still counts its agents`);
+    }
+    assert.equal(byWf[themeless].name, 'themeless');
+    assert.equal(byWf[themeless].phase, null, 'no phases in the meta means no phase, not a guess');
+  });
+});
+
+test('workflows: a phase no running label matches stays null, and the script is read once', async () => {
+  await withFx(async (fx, start) => {
+    const s = fx.session();
+    const wf = 'wf_unlabelled';
+    // Real workflow agents carry NO description in meta.json: the labels the
+    // phase match needs simply are not there, and inventing one is worse than
+    // showing none.
+    s.workflowScript(wf, { name: 'nightly', phases: ['Implement', 'Review'] });
+    const id = s.agent({ workflowId: wf });
+    s.workflowJournal(wf, [{ type: 'started', agentId: id }]);
+    fs.writeFileSync(path.join(s.projDir, s.id, 'subagents', 'workflows', wf, `agent-${id}.meta.json`),
+      JSON.stringify({ agentType: 'workflow-subagent', spawnDepth: 1, model: 'opus' }));
+
+    const a = start({ resweepMs: 0 });
+    a.refresh();
+    let w = byId(a.sessions(), s.id).workflows[0];
+    assert.equal(w.name, 'nightly');
+    assert.deepEqual(w.phase, { current: null, done: 0, total: 1 });
+
+    // The script is immutable, so a later rewrite must not be re-read.
+    const scriptPath = path.join(s.projDir, s.id, 'workflows', 'scripts', `nightly-${wf}.js`);
+    fs.writeFileSync(scriptPath, "export const meta = { name: 'rewritten' }\n");
+    a.refresh();
+    w = byId(a.sessions(), s.id).workflows[0];
+    assert.equal(w.name, 'nightly', 'the per-workflow script read is cached');
+  });
+});
+
+test('workflows: a script that lands after the workflow dir is picked up on the sweep', async () => {
+  await withFx(async (fx, start) => {
+    const s = fx.session();
+    const wf = 'wf_late_script';
+    const id = s.agent({ workflowId: wf, description: 'implement:A' });
+    s.workflowJournal(wf, [{ type: 'started', agentId: id }]);
+
+    const a = start({ resweepMs: 0 });
+    a.refresh();
+    assert.equal(byId(a.sessions(), s.id).workflows[0].name, null);
+
+    s.workflowScript(wf, { name: 'arrived-late', phases: ['Implement'] });
+    a.refresh();
+    const w = byId(a.sessions(), s.id).workflows[0];
+    assert.equal(w.name, 'arrived-late', 'a miss is retried, not cached forever');
+    assert.equal(w.phase.current, 'Implement');
+  });
+});
+
 test('subagents: the incremental scan still sees new agents and later completions', async () => {
   await withFx(async (fx, start) => {
     const s = fx.session();
@@ -683,6 +853,98 @@ test('subagents: an agent that starts writing again goes back to running', async
   });
 });
 
+// A subagent writes its own transcript, so the parent's in-flight bookkeeping
+// can never see what it is doing. These read the tail of the agent's own file.
+const agentLine = (o) => JSON.stringify(rec[o.kind]({ cwd: '/work/x', sessionId: 'sid', ...o }));
+
+test('currentTool: a running subagent exposes the tool it has not finished yet', async () => {
+  await withFx(async (fx, start) => {
+    const s = fx.session();
+    const busy = s.agent({
+      description: 'the busy one',
+      lines: [
+        agentLine({ kind: 'assistantTool', name: 'Read', input: { file_path: '/work/a.go' }, toolId: 'toolu_done' }),
+        agentLine({ kind: 'toolResult', toolId: 'toolu_done' }),
+        agentLine({ kind: 'assistantTool', name: 'Bash', input: { command: 'go test ./...' }, toolId: 'toolu_live' }),
+      ],
+    });
+    const quiet = s.agent({
+      description: 'between tools',
+      lines: [
+        agentLine({ kind: 'assistantTool', name: 'Grep', input: { pattern: 'ledger' }, toolId: 'toolu_x' }),
+        agentLine({ kind: 'toolResult', toolId: 'toolu_x' }),
+      ],
+    });
+
+    const a = start();
+    a.refresh();
+    const agents = byId(a.sessions(), s.id).agents;
+    const get = (id) => agents.find((x) => x.agentId === id);
+
+    assert.equal(get(busy).currentTool.name, 'Bash');
+    assert.equal(get(busy).currentTool.detail, 'go test ./...');
+    assert.ok(get(busy).currentTool.at > 0, 'the tool line carries the record timestamp');
+    assert.equal(get(quiet).currentTool, null, 'every tool_use answered means no live tool');
+  });
+});
+
+test('currentTool: only the tail of a huge agent transcript is read, and only for running agents', async () => {
+  await withFx(async (fx, start) => {
+    const s = fx.session();
+    // The 64KB window lands mid-record; skipping to the first newline is what
+    // keeps a torn head from poisoning the whole read.
+    const padding = JSON.stringify({ type: 'assistant', pad: 'p'.repeat(120_000) });
+    const big = s.agent({
+      description: 'long runner',
+      lines: [padding, agentLine({ kind: 'assistantTool', name: 'Edit', input: { file_path: '/work/big.go' }, toolId: 'toolu_tail' })],
+    });
+    const finished = s.agent({
+      description: 'already done',
+      mtimeMs: Date.now() - 45 * 60_000,
+      lines: [agentLine({ kind: 'assistantTool', name: 'Bash', input: { command: 'stale' }, toolId: 'toolu_old' })],
+    });
+
+    const a = start();
+    a.refresh();
+    const agents = byId(a.sessions(), s.id).agents;
+    const get = (id) => agents.find((x) => x.agentId === id);
+
+    assert.ok(fs.statSync(get(big).transcriptPath).size > 65536, 'the fixture is really past the window');
+    assert.equal(get(big).currentTool.name, 'Edit', 'the newest record is inside the tail window');
+    assert.equal(get(finished).status, 'done');
+    assert.equal(get(finished).currentTool, null, 'a finished agent is never reported as holding a tool');
+  });
+});
+
+test('currentTool: the workflow tree carries the same live tool line, under a per-pass cap', async () => {
+  await withFx(async (fx, start) => {
+    const s = fx.session();
+    const wf = 'wf_live_tools';
+    s.workflowScript(wf, { name: 'live', phases: ['Implement'] });
+    const ids = [];
+    for (let i = 0; i < 14; i++) {
+      ids.push(s.agent({
+        workflowId: wf, description: `implement:lane-${i}`,
+        lines: [agentLine({ kind: 'assistantTool', name: 'Bash', input: { command: `lane ${i}` }, toolId: `toolu_${i}` })],
+      }));
+    }
+    s.workflowJournal(wf, ids.map((id) => ({ type: 'started', agentId: id })));
+
+    const a = start();
+    a.refresh();
+    const v = byId(a.sessions(), s.id);
+    const w = v.workflows[0];
+
+    assert.equal(w.runningAgents.length, 6, 'the workflow lists at most six running agents');
+    const withTool = v.agents.filter((x) => x.currentTool);
+    assert.equal(withTool.length, 12, 'at most twelve agent transcripts are tailed per pass');
+    assert.match(withTool[0].currentTool.detail, /^lane \d+$/);
+    for (const r of w.runningAgents.filter((x) => x.currentTool)) {
+      assert.equal(r.currentTool.name, 'Bash', 'the tree entry carries the same tool line as the agent');
+    }
+  });
+});
+
 test('digest: the journal is written by the adapter and read back by window', async () => {
   await withFx(async (fx, start) => {
     const s = fx.session({ name: 'digest-me' });
@@ -713,6 +975,67 @@ test('digest: the journal is written by the adapter and read back by window', as
     a.refresh();
     assert.equal(a.digestEvents(0).length, all.length);
   });
+});
+
+// /digest and every open detail panel ask for this file, and a week of journal
+// is thousands of lines to parse. It is parsed once per (size, mtimeMs) — the
+// same key journalResults uses for a workflow journal. Proven by rewriting the
+// file in place at the same size and stamp: without a cache the new content
+// would come back, and the ceiling that lets that through is the point.
+test('digest: the journal is parsed once per (size, mtimeMs), not once per request', async () => {
+  await withFx(async (fx, start) => {
+    const journalPath = path.join(fx.stateDir, 'journal.jsonl');
+    const at = Date.now() - 3600_000;
+    const row = (id) => JSON.stringify({ at, sessionId: id, name: id, kind: 'turn', data: {} }) + '\n';
+    fs.writeFileSync(journalPath, row('aaa'));
+
+    const a = start();                                    // boot rewrites the file, so stamp after it
+    const stamp = Math.floor(Date.now() / 1000) - 60;     // whole seconds round-trip through utimes exactly
+    fs.utimesSync(journalPath, stamp, stamp);
+    assert.deepEqual(a.digestEvents(0).map((e) => e.sessionId), ['aaa']);
+
+    const st = fs.statSync(journalPath);
+    fs.writeFileSync(journalPath, row('bbb'));
+    fs.utimesSync(journalPath, stamp, stamp);
+    const st2 = fs.statSync(journalPath);
+    assert.equal(st2.size, st.size, 'the rewrite really is byte-for-byte the same size');
+    assert.equal(st2.mtimeMs, st.mtimeMs, 'and the stamp really was put back');
+    assert.deepEqual(a.digestEvents(0).map((e) => e.sessionId), ['aaa'], 'answered from the parse, not the file');
+
+    fs.appendFileSync(journalPath, row('ccc'));   // any real append moves the size
+    assert.deepEqual(a.digestEvents(0).map((e) => e.sessionId), ['bbb', 'ccc'], 'and a real write invalidates it');
+  });
+});
+
+// A summary costs a model call and is then cached under the version it was
+// built at, so one written from a half-replayed transcript is wrong AND sticky.
+// caughtUp() is the adapter saying "not yet" out loud.
+test('replay: caughtUp() is false until the boot replay passes the persisted floor', async () => {
+  const fx = makeFixture();
+  let a2 = null;
+  try {
+    const s = fx.session({ name: 'long-runner' });
+    for (let i = 0; i < 40; i++) {
+      s.add('assistantTool', { name: 'Bash', input: { command: `step ${i}` }, toolId: `t${i}` })
+        .add('toolResult', { toolId: `t${i}` });
+    }
+    const a1 = createClaudeAdapter(fx.opts());
+    a1.refresh();
+    assert.equal(a1.caughtUp(s.id), true, 'a first run has no floor to climb');
+    a1.stop();
+
+    // A restart replays the whole file from byte 0; maxDelta is what a real
+    // daemon's 16MB chunk is to a 50MB transcript, shrunk to fixture scale. It
+    // has to clear one whole record or the tail can never advance at all.
+    const CHUNK = 4096;
+    assert.ok(fs.statSync(s.transcriptPath).size > CHUNK * 4, 'the fixture is big enough to replay in pieces');
+    a2 = createClaudeAdapter(fx.opts({ maxDelta: CHUNK }));
+    assert.equal(a2.caughtUp(s.id), false, 'still climbing the floor an earlier run left');
+    assert.equal(a2.caughtUp('no-such-session'), true, 'an id with no transcript is not held back');
+
+    for (let i = 0; i < 200 && !a2.caughtUp(s.id); i++) a2.refresh();
+    assert.equal(a2.caughtUp(s.id), true, 'and true once the replay reaches what was already announced');
+  } finally { a2?.stop(); fx.cleanup(); }
 });
 
 test('digest: entries older than 7 days are pruned on boot', async () => {
@@ -868,6 +1191,97 @@ test('digest: a session that exited while the daemon was down is closed at boot'
     assert.deepEqual(kinds, ['session-start', 'session-end', 'session-start'],
       'a resume after the gap must announce itself again');
   } finally { a2?.stop(); fx.cleanup(); }
+});
+
+test('material: a bounded, labelled window whose version moves only when the session speaks', async () => {
+  await withFx(async (fx, start) => {
+    const s = fx.session();
+    s.add('aiTitle', { title: 'ledger repair' })
+      .add('lastPrompt', { text: 'conserta o saldo do tenant lastlink' })
+      .add('assistantTool', { name: 'Bash', input: { command: 'go test ./...' }, toolId: 'toolu_1' })
+      .add('toolResult', { toolId: 'toolu_1' })
+      .add('assistantTool', {
+        name: 'TodoWrite',
+        input: { todos: [{ content: 'reconcile balances', status: 'in_progress' }] },
+      })
+      .add('turn', {});
+
+    const a = start();
+    a.refresh();
+    const m = a.material(s.id);
+
+    assert.ok(m.text.includes('Title: ledger repair'));
+    assert.ok(m.text.includes('Last prompt: conserta o saldo do tenant lastlink'));
+    assert.ok(m.text.includes('- Bash go test ./...'), 'recent tools are one line each');
+    assert.ok(m.text.includes('- [in_progress] reconcile balances'), 'todo statuses come through');
+    assert.ok(m.text.length <= 4000);
+
+    assert.deepEqual(a.material(s.id), m, 'nothing changed, so neither does the version');
+    a.refresh();
+    assert.equal(a.material(s.id).version, m.version, 'a pass that reads nothing new keeps it');
+
+    s.add('lastPrompt', { text: 'agora reconcilia o outro tenant' }).add('turn', {});
+    a.refresh();
+    const after = a.material(s.id);
+    assert.notEqual(after.version, m.version, 'a new turn moves the version');
+    assert.ok(after.text.includes('agora reconcilia o outro tenant'));
+
+    assert.equal(a.material('no-such-session'), null, 'an unknown id has no material');
+  });
+});
+
+// material() is the ONLY value this adapter builds to be handed to a third
+// party, and the two things it is built from — the last prompt and the tool
+// lines — are exactly where a pasted key lands. The scrub happens here, not
+// only at the summarizer, so any future caller of material() is covered too.
+test('material: a key pasted into a prompt or printed by a tool is redacted', async () => {
+  await withFx(async (fx, start) => {
+    const PASTED = 'sk-or-v1-9f2a1c4e8b7d6a5f3e2c1b0a9d8e7f6a';
+    const HEADER = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkYXRhcHJldiJ9.Hs4bJk2mQpR7tWxYzA1bCd3EfGhIjKlMn';
+    const s = fx.session();
+    s.add('aiTitle', { title: 'rotate the gateway credential' })
+      .add('lastPrompt', { text: `use this for the sandbox: Authorization: Bearer ${HEADER}` })
+      .add('assistantTool', { name: 'Bash', input: { command: `OPENROUTER_API_KEY=${PASTED} node bin/agenttrail.mjs` }, toolId: 'toolu_1' })
+      .add('toolResult', { toolId: 'toolu_1' })
+      .add('assistantTool', { name: 'Read', input: { file_path: '/srv/worktrees/live-context/lib/summarize.mjs' }, toolId: 'toolu_2' })
+      .add('toolResult', { toolId: 'toolu_2' })
+      .add('turn', {});
+
+    const a = start();
+    a.refresh();
+    const { text } = a.material(s.id);
+
+    assert.equal(text.includes(PASTED), false, 'the pasted key would have gone straight to the model');
+    assert.equal(text.includes(HEADER), false, 'and so would the bearer token above it');
+    assert.match(text, /OPENROUTER_API_KEY=\[redacted\]/, 'the name of the variable is not the secret');
+    assert.ok(text.includes('Title: rotate the gateway credential'), 'the readable part is untouched');
+    assert.ok(text.includes('- Read /srv/worktrees/live-context/lib/summarize.mjs'),
+      'and a file path is not mistaken for a base64 blob');
+  });
+});
+
+test('material: the window is capped even when the session is enormous', async () => {
+  await withFx(async (fx, start) => {
+    const s = fx.session();
+    s.add('aiTitle', { title: 'T'.repeat(3000) })
+      .add('lastPrompt', { text: 'P'.repeat(600) });
+    for (let i = 0; i < 30; i++) {
+      s.add('assistantTool', { name: `Bash`, input: { command: `step ${i} ${'c'.repeat(300)}` }, toolId: `t${i}` })
+        .add('toolResult', { toolId: `t${i}` });
+    }
+    s.add('assistantTool', {
+      name: 'TodoWrite',
+      input: { todos: Array.from({ length: 20 }, (_, i) => ({ content: 'x'.repeat(200), status: 'pending' })) },
+    });
+
+    const a = start();
+    a.refresh();
+    const m = a.material(s.id);
+
+    assert.equal(m.text.length, 4000, 'the window is hard-capped');
+    assert.ok(m.text.startsWith('Title: TTT'), 'and it keeps the head, not a random slice');
+    assert.match(m.version, /^\d+:\d+$/);
+  });
 });
 
 test('export and distill resolve the transcript by session id alone', async () => {

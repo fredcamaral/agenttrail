@@ -507,6 +507,11 @@ test('composeAdapters merges digests in time order and stops every source', () =
   try {
     assert.deepEqual(adapter.digestEvents(0).map((e) => e.at), [5]);
     assert.equal(adapter.exportPath('nobody-owns-this'), null);
+    // The replay flag is opt-in per source: opencode defines none at all, and a
+    // source that says nothing is not holding a summary back.
+    assert.equal(adapter.caughtUp('claude-sess'), true);
+    claude.caughtUp = (id) => id !== 'claude-sess';
+    assert.equal(adapter.caughtUp('claude-sess'), false, 'one source still replaying is enough to wait');
     adapter.stop();
     assert.equal(claude.stopped, true);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); fx.cleanup(); }
