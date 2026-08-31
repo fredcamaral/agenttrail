@@ -101,6 +101,7 @@ summary::-webkit-details-marker{display:none}
 .dl-menu a:hover{color:var(--text);background:var(--hover)}
 .act{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--dim);cursor:pointer;font:500 var(--fs-2)/16px var(--font);transition:color 160ms var(--ease-out),background 160ms var(--ease-out)}
 .act:hover{color:var(--text);background:var(--hover)}
+.act:disabled{color:var(--faint);background:transparent;cursor:default}
 .act.on{color:var(--text);border-color:var(--accent);background:var(--accent-bg)}
 .card .act{min-height:0;padding:2px 8px;font-weight:400;font-size:var(--fs-1)}
 /* one authored moment: the sheet rises, the backdrop fades, both reversible */
@@ -140,6 +141,10 @@ button.row:hover{background:var(--hover)}
 .row.big{font:400 var(--fs-3)/18px var(--font);letter-spacing:-.01em}
 .row.big .v{white-space:normal}
 .hint{padding:8px 0;color:var(--faint);font:400 var(--fs-1)/17px var(--mono);overflow-wrap:anywhere}
+/* a hint inside a row is that row saying more, not a block of its own: no rule
+   between the two, and no padding pushing the caption away from what it says */
+.row:has(>.hint){border-top:0;padding-top:0}
+.row>.hint{padding:0}
 /* a workflow blurb is two lines of context, never a wall of prose that pushes
    the agents under it off the screen */
 .c2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:normal}
@@ -332,7 +337,12 @@ const tlText=(k,d)=>d==null?'':typeof d!=='object'?String(d)
 // `anc` is one flag per ancestor: true while that ancestor still has children
 // below this row, which is what keeps its line drawn. An 8px indent read as
 // nothing on a phone; a glyph reads as structure at any width.
-const guide=(anc,last)=>`<span class="g">${anc.map(c=>c?'│  ':'   ').join('')}${last?'└─':'├─'}</span>`
+const stem=anc=>anc.map(c=>c?'│  ':'   ').join('')
+const guide=(anc,last)=>`<span class="g">${stem(anc)}${last?'└─':'├─'}</span>`
+// A caption is not a node: it is the row above it saying more. So it takes the
+// prefix a child WOULD get, minus the branch glyph — every line still open above
+// keeps going past it — and clamps, because a brief is prose, not a label.
+const capRow=(anc,last,t)=>`<div class="row"><span class="g">${stem(anc)}${last?'   ':'│  '}</span><span class="hint c2">${esc(t)}</span></div>`
 // A row's guide is decided by what comes AFTER it, so the flags are read
 // backwards off the depth sequence. That also covers the rows treeRows appends
 // out of band — orphans, cycle survivors — without walking the tree twice.
@@ -352,9 +362,43 @@ function rootRow(s){
   const c=canon(s),st=stat(s),t=st==='busy'?s.currentTool:null
   return`<div class="row ${st==='busy'?'running':st==='ended'?'done':''}"><span class="d"></span><span class="k">${esc(c?c.text:String(s.name||s.title||s.id))}</span><span class="v">${t?esc(t.name)+(t.detail?' '+esc(t.detail):''):''}</span><span class="r">${t&&+t.at>0?`<span class="t-ago" data-at="${+t.at}"></span>`:''}</span></div>`
 }
+// Summarizing a spawn prompt costs a model call, so the daemon only does it when
+// asked. What comes back is kept here, not written into the session: a full
+// snapshot replaces every session object, and an answer already paid for must
+// survive that. BRIEFING is the flight, so a row never asks twice.
+const BRIEFS=new Map(),BRIEFING=new Set();let NOKEY=false
+const aid=a=>a&&a.agentId!=null?String(a.agentId):''
+const abrief=a=>String((a&&(a.brief||BRIEFS.get(aid(a))))||'')
+// The row offers the trip instead of taking it. Absent `briefable` there is no
+// prompt and the row says nothing; on a 503 the daemon has no key at all, so
+// every button goes dead rather than back to askable.
+const briefBtn=a=>{const id=aid(a),run=BRIEFING.has(id)
+  return id&&a.briefable&&!abrief(a)?`<button class="act" type="button" data-brief="${esc(id)}"${run||NOKEY?' disabled':''}>${NOKEY?'no key':run?'…':'brief'}</button>`:''}
+async function askBrief(id,e){
+  e&&e.preventDefault?.();e&&e.stopPropagation?.()   // never toggle the group the row sits in
+  if(!id||!DET||NOKEY||BRIEFING.has(id)||BRIEFS.has(id))return
+  BRIEFING.add(id);renderDetail()
+  try{
+    const r=await fetch(`/brief?session=${encodeURIComponent(DET.id)}&agent=${encodeURIComponent(id)}`,{method:'POST'})
+    if(r.status===503)NOKEY=true
+    const j=r.ok?await r.json():null
+    if(j&&j.text)BRIEFS.set(id,String(j.text))
+  }catch{}
+  BRIEFING.delete(id);renderDetail()   // an answer paints; a failure gives the button back
+}
+// An agent id says nothing about intent, and a type barely more. The brief —
+// what the spawner actually told this agent to do — does, so it stands in for a
+// missing description before either is shown. `alt` is the row's last resort.
+const agentName=(a,alt)=>String((a&&(a.description||abrief(a)||alt||a.agentId))||'agent')
+// When the row is already named, the brief captions it instead. Automatically
+// only while the agent runs — a caption under every finished row buries what is
+// still moving — but one the reader asked for is shown wherever it landed.
+const agentCap=(a,nm,run,anc,last)=>{const b=run||BRIEFS.has(aid(a))?abrief(a):''
+  return b&&b!==nm?capRow(anc,last,b):''}
 function agentLine(a,anc,last){
-  const t=a&&a.currentTool
-  return`<div class="row running">${guide(anc,last)}<span class="d"></span><span class="k">${esc((a&&(a.description||a.type||a.agentId))||'agent')}</span><span class="v">${t?esc(t.name)+(t.detail?' '+esc(t.detail):''):'—'}</span><span class="r">${t&&+t.at>0?`<span class="t-ago" data-at="${+t.at}"></span>`:''}</span></div>`
+  const t=a&&a.currentTool,nm=agentName(a,a&&a.type)
+  return`<div class="row running">${guide(anc,last)}<span class="d"></span><span class="k">${esc(nm)}</span><span class="v">${t?esc(t.name)+(t.detail?' '+esc(t.detail):''):'—'}</span><span class="r">${t&&+t.at>0?`<span class="t-ago" data-at="${+t.at}"></span>`:''}${briefBtn(a)}</span></div>`
+    +agentCap(a,nm,true,anc,last)
 }
 // One dim line, not a list: on a 320px card the finished agents are context for
 // the ones still moving, and listing them buries what the tree is being read for.
@@ -367,7 +411,7 @@ function wfNode(w,run,done,more,last){
   const p=w.phase,anc=[!last],n=run.length+(more?1:0)+(done?1:0)
   const prog=p&&p.current?`${esc(p.current)} ${+p.done||0}/${+p.total||0}`:`${+w.done||0}/${+w.agents||0} done`
   return`<div class="row running">${guide([],last)}<span class="d"></span><span class="v">${esc(w.name||w.id)}</span><span class="r">${prog}</span></div>`
-    +(w.description?`<div class="hint c2">${esc(w.description)}</div>`:'')
+    +(w.description?capRow([],last,w.description):'')
     +run.map((a,i)=>agentLine(a,anc,i===n-1)).join('')
     +(more?moreRow(anc,!done,more):'')
     +(done?doneRow(anc,true,done):'')
@@ -488,9 +532,10 @@ const AROWS=60
 function agentRows(list,anc){
   const all=guided(treeRows(list)),rows=all.slice(0,AROWS)
   const html=rows.map(r=>{
-    const a=r.a,run=a.status==='running'
+    const a=r.a,run=a.status==='running',p=[...anc,...r.anc],nm=agentName(a)
     const age=run?(+a.startedAt>0?`<span class="t-ago" data-at="${+a.startedAt}"></span>`:''):(+a.lastEventAt>+a.startedAt?dur(a.lastEventAt-a.startedAt):'')
-    return`<div class="row ${run?'running':'done'}">${guide([...anc,...r.anc],r.last)}<span class="d"></span><span class="k">${esc(a.type||'agent')}</span><span class="v">${esc(a.description||a.agentId)}</span><span class="r">${a.model?esc(a.model)+' · ':''}${age}</span></div>`
+    return`<div class="row ${run?'running':'done'}">${guide(p,r.last)}<span class="d"></span><span class="k">${esc(a.type||'agent')}</span><span class="v">${esc(nm)}</span><span class="r">${a.model?esc(a.model)+' · ':''}${age}${briefBtn(a)}</span></div>`
+      +agentCap(a,nm,run,p,r.last)
   }).join('')
   return html+(all.length>rows.length?`<div class="hint">+${all.length-rows.length} more</div>`:'')
 }
@@ -519,7 +564,7 @@ function treeSection(s){
   groups.forEach(([k,g],i)=>{
     const run=runs(g.list),open=WFOPEN.has(k)?WFOPEN.get(k):run>0
     const last=i===groups.length-1&&!loose.length
-    out+=`<details class="wf" data-wf="${esc(k)}"${open?' open':''}><summary class="row ${run?'running':'done'}">${guide([],last)}<span class="d"></span><span class="k">workflow</span><span class="v">${esc((g.w&&g.w.name)||k)}</span><span class="r">${g.list.length-run}/${g.list.length} done${run?` · ${run} running`:''}</span></summary>${agentRows(g.list,[!last])}</details>`
+    out+=`<details class="wf" data-wf="${esc(k)}"${open?' open':''}><summary class="row ${run?'running':'done'}">${guide([],last)}<span class="d"></span><span class="k">workflow</span><span class="v">${esc((g.w&&g.w.name)||k)}</span><span class="r">${g.list.length-run}/${g.list.length} done${run?` · ${run} running`:''}</span></summary>${g.w&&g.w.description?capRow([],last,g.w.description):''}${agentRows(g.list,[!last])}</details>`
   })
   return`<div class="sec"><h2>subagents · ${agents.length}</h2>${out}${loose.length?agentRows(loose,[]):''}</div>`
 }
@@ -619,6 +664,8 @@ function renderDigest(){
 on($('sheet-body'),'click',e=>{
   const t=e.target
   if(!t||!t.closest)return
+  const ask=t.closest('[data-brief]')
+  if(ask)return askBrief(ask.dataset.brief,e)
   const pick=t.closest('[data-i]')
   if(pick){const i=+pick.dataset.i,h=RANGES[i]&&RANGES[i][0];return setSince(h?Date.now()-h*3600e3:LAST_SEEN||Date.now()-24*3600e3,i)}
   const row=t.closest('[data-sid]')
@@ -636,7 +683,10 @@ on($('sheet-body'),'change',e=>{
 // A card opens its own detail; links and the export menu keep their behaviour.
 on($('sessions'),'click',e=>{
   const t=e.target
-  if(!t||!t.closest||t.closest('a,summary,.dl'))return
+  if(!t||!t.closest)return
+  const ask=t.closest('[data-brief]')   // asking for a brief must not fold the card under it
+  if(ask)return askBrief(ask.dataset.brief,e)
+  if(t.closest('a,summary,.dl'))return
   const card=t.closest('.card')
   if(card&&card.dataset.id)openDetail(card.dataset.id)
 })
