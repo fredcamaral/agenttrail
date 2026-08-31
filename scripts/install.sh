@@ -219,6 +219,16 @@ tailnet_off() {
 
 # ---------- commands ----------
 
+# The service manager starts the daemon without this shell's environment; the
+# daemon reads ~/.agenttrail/env at boot. Persist the summary key when we have it.
+persist_env() {
+  [ -n "${OPENROUTER_API_KEY:-}" ] || return 0
+  local f="$HOME/.agenttrail/env"
+  if [ -f "$f" ] && grep -q '^OPENROUTER_API_KEY=' "$f"; then return 0; fi
+  ( umask 077; mkdir -p "$HOME/.agenttrail"; printf 'OPENROUTER_API_KEY=%s\n' "$OPENROUTER_API_KEY" >> "$f" )
+  say "summaries: wrote OPENROUTER_API_KEY to $f (mode 0600)"
+}
+
 install_service() {
   local out unit
   # -y so it overwrites an existing unit without asking; the daemon points the
@@ -230,6 +240,7 @@ install_service() {
   say "service:  $unit"
   say "runs:     $NODE $REPO/bin/agenttrail.mjs --port $PORT"
 
+  persist_env
   if [ "$OS" = macos ]; then activate_macos "$unit"; else activate_linux; fi
 
   local body

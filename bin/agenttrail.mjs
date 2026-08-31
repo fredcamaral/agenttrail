@@ -414,7 +414,32 @@ function listen(server, port, tries = 20) {
   })
 }
 
+// A service manager (systemd user unit, launchd) starts the daemon without the
+// login shell's environment, so OPENROUTER_API_KEY never reaches it that way.
+// The daemon reads ~/.agenttrail/env itself: KEY=VALUE lines, # comments and
+// blanks ignored, single/double quotes around the value stripped, and a var
+// already present in the real environment always wins.
+export function loadEnvFile(file, env = process.env) {
+  let text
+  try { text = fs.readFileSync(file, 'utf8') } catch { return 0 }
+  let n = 0
+  for (const raw of text.split('\n')) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#')) continue
+    const eq = line.indexOf('=')
+    if (eq < 1) continue
+    const key = line.slice(0, eq).trim()
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || env[key] !== undefined) continue
+    let val = line.slice(eq + 1).trim()
+    if (val.length > 1 && ((val[0] === '"' && val.endsWith('"')) || (val[0] === "'" && val.endsWith("'")))) val = val.slice(1, -1)
+    env[key] = val
+    n++
+  }
+  return n
+}
+
 async function runDaemon(args) {
+  loadEnvFile(path.join(os.homedir(), '.agenttrail', 'env'))
   // One daemon per machine. A different process on the asked-for port is a port
   // clash, not a duplicate — we fall forward, so look for ourselves up-range too.
   const live = await findDaemon(args.port)
