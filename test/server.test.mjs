@@ -8,7 +8,21 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { once } from 'node:events'
-import { buildUnit, createServer, digest, findDaemon, hostAllowed, parseArgs } from '../bin/agenttrail.mjs'
+import { buildUnit, createServer, digest, findDaemon, hostAllowed, loadEnvFile, parseArgs } from '../bin/agenttrail.mjs'
+
+test('loadEnvFile fills only absent vars, skips junk, strips quotes, tolerates a missing file', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'at-env-'))
+  const f = path.join(dir, 'env')
+  fs.writeFileSync(f, '# comment\n\nOPENROUTER_API_KEY="k-from-file"\nALREADY_SET=nope\n=bad\n1BAD=x\nPLAIN=  spaced  \n')
+  const env = { ALREADY_SET: 'kept' }
+  const n = loadEnvFile(f, env)
+  assert.equal(n, 2)
+  assert.equal(env.OPENROUTER_API_KEY, 'k-from-file')
+  assert.equal(env.ALREADY_SET, 'kept')
+  assert.equal(env.PLAIN, 'spaced')
+  assert.equal(loadEnvFile(path.join(dir, 'absent'), {}), 0)
+  fs.rmSync(dir, { recursive: true, force: true })
+})
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agenttrail-server-'))
 process.on('exit', () => { try { fs.rmSync(tmp, { recursive: true, force: true }) } catch {} })
