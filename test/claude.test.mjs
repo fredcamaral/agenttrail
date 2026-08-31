@@ -945,6 +945,116 @@ test('currentTool: the workflow tree carries the same live tool line, under a pe
   });
 });
 
+// A workflow agent has no description of its own, so the dashboard renders it
+// as a raw hex id. The prompt it was spawned with is the intent, and it is the
+// FIRST user record of the agent's own transcript.
+test('spawnPrompt: the first user record of an agent transcript, trimmed and capped', async () => {
+  await withFx(async (fx, start) => {
+    const s = fx.session();
+    const body = 'Fix the remaining wave-3 review findings in lib/claude.mjs\n\nLeave the UI alone.';
+    const long = 'Reconcile the ledger. ' + 'x'.repeat(5000);
+    const plain = s.agent({ description: 'work', prompt: `\n\n  ${body}  \n\n` });
+    const big = s.agent({ prompt: long });
+    const blocks = s.agent({ prompt: [{ type: 'text', text: 'Review the dedupe lane\nand report back' }] });
+    const noText = s.agent({ prompt: [{ type: 'image', source: { data: 'x' } }] });
+    const torn = s.agent({ lines: ['{"type":"user","message":{"role":"user","content":"cut off mid-', '{"type":"assistant"}'] });
+    const silent = s.agent({ lines: ['{"type":"assistant"}'] });
+
+    const a = start();
+    a.refresh();
+    const agents = byId(a.sessions(), s.id).agents;
+    const p = (id) => agents.find((x) => x.agentId === id).spawnPrompt;
+
+    assert.equal(p(plain), body, 'the whole prompt, whitespace-trimmed');
+    assert.equal(p(big).length, 4000, 'hard-cut at the summarizer budget');
+    assert.equal(p(big), long.slice(0, 4000), 'and it keeps the head, not a random slice');
+    assert.equal(p(blocks), 'Review the dedupe lane\nand report back', 'content can be an array of blocks');
+    assert.equal(p(noText), null, 'a block carrying no text is not a prompt');
+    assert.equal(p(torn), null, 'a torn first record yields null, not a guess');
+    assert.equal(p(silent), null, 'no user record at all means no prompt');
+    assert.ok(agents.every((x) => 'spawnPrompt' in x), 'every agent object carries the field');
+  });
+});
+
+test('spawnPrompt: a workflow running agent carries it in the tree entry too', async () => {
+  await withFx(async (fx, start) => {
+    const s = fx.session();
+    const wf = 'wf_spawn';
+    s.workflowScript(wf, { name: 'wave3', phases: ['Implement'] });
+    const live = s.agent({ workflowId: wf, description: 'implement:A-adapter', prompt: 'Implement the adapter lane' });
+    const done = s.agent({ workflowId: wf, description: 'implement:B-ui', prompt: 'Implement the UI lane' });
+    s.workflowJournal(wf, [
+      { type: 'started', agentId: live },
+      { type: 'started', agentId: done }, { type: 'result', agentId: done },
+    ]);
+
+    const a = start();
+    a.refresh();
+    const v = byId(a.sessions(), s.id);
+
+    assert.deepEqual(v.workflows[0].runningAgents.map((r) => r.spawnPrompt), ['Implement the adapter lane'],
+      'the running entry carries the same prompt as the flat one');
+    assert.equal(v.agents.find((x) => x.agentId === done).spawnPrompt, 'Implement the UI lane');
+  });
+});
+
+test('spawnPrompt: only the newest agents are read, and the accessor still answers for an old one', async () => {
+  await withFx(async (fx, start) => {
+    // A real session reaches thousands of subagents (2734 on mordor), so a tick
+    // reads the newest 80 and leaves the rest untouched rather than walking
+    // every transcript. Ranking is by startedAt — created first is oldest — and
+    // the backdated mtimes only settle every agent here as done.
+    const s = fx.session();
+    const old = [];
+    for (let i = 0; i < 4; i++) old.push(s.agent({ prompt: `old lane ${i}`, mtimeMs: Date.now() - 90 * 60_000 }));
+    await new Promise((r) => setTimeout(r, 25));        // birth times must not collide
+    const fresh = [];
+    for (let i = 0; i < 80; i++) fresh.push(s.agent({ prompt: `lane ${i}`, mtimeMs: Date.now() - 45 * 60_000 }));
+
+    const a = start();
+    a.refresh();
+    const agents = byId(a.sessions(), s.id).agents;
+    const p = (id) => agents.find((x) => x.agentId === id).spawnPrompt;
+
+    assert.equal(agents.length, 84);
+    assert.ok(agents.every((x) => x.status === 'done'), 'the cap is what is under test here, not liveness');
+    assert.equal(agents.filter((x) => x.spawnPrompt).length, 80, 'exactly the newest 80 were read');
+    for (const id of old) assert.equal(p(id), null, 'an agent past the cap is left unread');
+    for (const id of fresh) assert.ok(p(id), 'and every agent inside it carries its prompt');
+
+    // A click names one specific agent, which can be any of the thousands.
+    assert.equal(a.spawnPrompt(s.id, old[0]), 'old lane 0', 'the accessor has no recency cap');
+    assert.equal(a.spawnPrompt(s.id, 'no-such-agent'), null, 'an unknown agent is null, not a throw');
+    assert.equal(a.spawnPrompt('no-such-session', old[0]), null, 'and so is an unknown session');
+
+    a.refresh();
+    assert.equal(byId(a.sessions(), s.id).agents.find((x) => x.agentId === old[0]).spawnPrompt, null,
+      'reading one on demand does not put it back into every tick');
+  });
+});
+
+test('spawnPrompt: the read is cached per agent, so a rewritten transcript keeps it', async () => {
+  await withFx(async (fx, start) => {
+    const s = fx.session();
+    s.agent({ description: 'long runner', prompt: 'Fix the wave-3 findings' });
+
+    const a = start({ resweepMs: 0 });
+    a.refresh();
+    const jsonl = byId(a.sessions(), s.id).agents[0].transcriptPath;
+    assert.equal(byId(a.sessions(), s.id).agents[0].spawnPrompt, 'Fix the wave-3 findings');
+
+    // The prompt an agent was spawned with is immutable, so its transcript head
+    // is never read twice — proven the way the workflow script cache is, by
+    // rewriting the file and watching the first read stand.
+    fs.writeFileSync(jsonl, JSON.stringify({ type: 'user', message: { role: 'user', content: 'REWRITTEN' } }) + '\n');
+    a.refresh();
+
+    const v = byId(a.sessions(), s.id).agents[0];
+    assert.equal(v.spawnPrompt, 'Fix the wave-3 findings', 'the per-agent read is cached for the daemon lifetime');
+    assert.equal(a.spawnPrompt(s.id, v.agentId), 'Fix the wave-3 findings', 'and the accessor answers from the same cache');
+  });
+});
+
 test('digest: the journal is written by the adapter and read back by window', async () => {
   await withFx(async (fx, start) => {
     const s = fx.session({ name: 'digest-me' });
